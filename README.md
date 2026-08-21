@@ -265,10 +265,19 @@ them. [What has been measured, and what has not](docs/reproducibility.md).
   that requires you to be signed in will fail in the other app: the interception point in
   `ChromeDownloadManagerDelegate` carries no cookie. Passing credentials needs a different
   interception layer, not an extra argument. The setting's own summary says so.
-- **Passkeys (WebAuthn) do not work.** `Fido.FIDO2_PRIVILEGED_API` is restricted to
-  Google-signed browsers, so a self-built Chromium is refused with `ApiException: 17`. This is
-  inherent to building Chromium yourself, not caused by any patch here, verified by
-  reproducing it on an earlier build.
+- **Passkeys work, but only through a third-party password manager, and only after you trust
+  Bare once.** Two different APIs are involved. Google's own path,
+  `Fido.FIDO2_PRIVILEGED_API`, is restricted to Google-signed browsers, so a self-built
+  Chromium is refused with `ApiException: 17`; passkeys held in Google Password Manager are
+  therefore out of reach, and no patch here can change that. Android's Credential Manager is a
+  separate path and it does reach third-party providers such as Bitwarden, 1Password and Proton
+  Pass. Those providers only complete a passkey for a browser they recognise, keyed on package
+  name plus signing certificate, and Bare is not on any published list yet. The first attempt
+  fails with "browser is not recognized"; choose **Trust** when prompted, or add
+  `org.barebrowser` by hand under Bitwarden → Settings → Autofill → **Privileged apps**. If you
+  had trusted an earlier self-built Bare you will see "browser signature does not match"
+  instead, because release builds are signed with a different key than local ones: delete the
+  stale entry, then trust it again.
 - **Web Push is gone**, as a consequence of removing the GCM channel in patch 0007.
 - **Password managers need one setting turned on.** Chromium uses its own autofill by default
   and never consults Android's autofill framework, so Bitwarden, 1Password and similar are
