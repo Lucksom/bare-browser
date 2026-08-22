@@ -1,0 +1,63 @@
+From f9795753bce2e9ddc25f5971bc983c8b9ccb2033 Mon Sep 17 00:00:00 2001
+From: Chromium Extend <noreply@localhost>
+Date: Sat, 22 Aug 2026 08:30:59 +0000
+Subject: [PATCH] Let the current page row reach the omnibox on phones
+
+Tapping the address bar on a loaded page should offer that page as the first
+suggestion, with share, copy and edit beside it. In Bare it never appeared.
+
+EditUrlSuggestionProcessor declines the row when
+OmniboxCapabilities.hasDesktopExperience is true, the reasoning being that
+mobile-shaped actions do not belong in a desktop-like context. That call returns
+true whenever DeviceInfo.isDesktop() does, and that is a property of the desktop
+Android target rather than of the machine in front of the user. Bare is built
+from that target, so the row was declined on every device it runs on, phones
+included, and three useful actions had no route to them.
+
+The test now looks at the device: a tablet-sized screen with both a keyboard and
+a precision pointer still falls through to the plain suggestion, which is the
+case the original check was aiming at, while a phone gets the row.
+
+This is not sufficient on its own, and the reason is not the address bar. The bar
+clearing on focus was suspected and is not the cause: Titanium clears it too and
+still shows the row. The remaining gate is the zero-suggest verbatim match, which
+is what puts the current page at the head of the list for this row to be built
+from, and it is declined for the whole desktop Android target. That is dealt with
+separately.
+---
+ .../editurl/EditUrlSuggestionProcessor.java       | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/chrome/browser/ui/android/omnibox/java/src/org/chromium/chrome/browser/omnibox/suggestions/editurl/EditUrlSuggestionProcessor.java b/chrome/browser/ui/android/omnibox/java/src/org/chromium/chrome/browser/omnibox/suggestions/editurl/EditUrlSuggestionProcessor.java
+index 85fdf55aef..e086d0f11e 100644
+--- a/chrome/browser/ui/android/omnibox/java/src/org/chromium/chrome/browser/omnibox/suggestions/editurl/EditUrlSuggestionProcessor.java
++++ b/chrome/browser/ui/android/omnibox/java/src/org/chromium/chrome/browser/omnibox/suggestions/editurl/EditUrlSuggestionProcessor.java
+@@ -28,6 +28,8 @@ import org.chromium.components.dom_distiller.core.DomDistillerUrlUtils;
+ import org.chromium.components.omnibox.AutocompleteInput;
+ import org.chromium.components.omnibox.AutocompleteMatch;
+ import org.chromium.components.omnibox.OmniboxCapabilities;
++import org.chromium.ui.base.DeviceInput;
++import org.chromium.ui.base.DeviceFormFactor;
+ import org.chromium.components.omnibox.suggestions.OmniboxSuggestionUiType;
+ import org.chromium.components.ukm.UkmRecorder;
+ import org.chromium.ui.base.Clipboard;
+@@ -64,7 +66,18 @@ public class EditUrlSuggestionProcessor extends BaseSuggestionViewProcessor {
+ 
+         // Fall back to the base suggestion processor when retaining omnibox on focus so as not to
+         // show mobile-optimized actions in a desktop-like context.
+-        if (OmniboxCapabilities.hasDesktopExperience(mContext)) return false;
++        //
++        // De-Googled build: Bare is built from the desktop Android target, where
++        // hasDesktopExperience returns true on every device including phones. That hid this row
++        // everywhere and left the share, copy and edit actions for the current page unreachable.
++        // A phone is exactly the case those actions exist for, so the test below looks at the
++        // device instead: a tablet-sized screen with a keyboard and a pointer still falls through
++        // to the plain suggestion.
++        if (DeviceFormFactor.isNonMultiDisplayContextOnTablet(mContext)
++                && DeviceInput.supportsAlphabeticKeyboard()
++                && DeviceInput.supportsPrecisionPointer()) {
++            return false;
++        }
+ 
+         Tab activeTab = mTabSupplier.get();
+         if (activeTab == null
