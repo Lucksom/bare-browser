@@ -143,8 +143,8 @@ not carry over.
 
 Recorded when each of these landed, on a Pixel 10 Pro XL.
 
-Extensions install and run (Bitwarden, uBlock Origin, Dark Reader, Bypass Paywalls Clean),
-popups open and pinning works. Both crash reproductions behind 0001 are gone, and the shipped
+Extensions install and run (Bitwarden, uBlock Origin, Dark Reader), popups open and
+pinning works. Both crash reproductions behind 0001 are gone, and the shipped
 `AndroidManifest.xml` contains no reference to ML Kit or AICore.
 
 **0005** against a real in-page link tap: following a Reddit result from a search page keeps you
@@ -156,5 +156,5 @@ for both a 16:9 video and one taller than the viewport.
 
 **0014 and 0015** on a wiped profile, which is the only honest test for either: the new tab page
 shows DuckDuckGo and a query resolves to `duckduckgo.com`, and the browser opens straight to the
-new tab page with no first-run screen, including after a force stop and relaunch, which is what
-fails if the Terms of Service acceptance does not persist.
+new tab page with no first-run screen, including after a force stop and relaunch. If the Terms
+of Service acceptance did not persist, that screen would come back.
