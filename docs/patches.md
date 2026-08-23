@@ -84,6 +84,14 @@ themselves are in [`patches/`](../patches); this is the summary of what each one
 | 0077 | Read night mode from the browser, not from a Context | The renderer filled white because the Context reachable from a WebContents answered for the system |
 | 0078 | Keep the verbatim match the current page row needs | The row is built from a match the desktop target declined to produce |
 | 0079 | Name the filter list that strips tracking from links | uBlock Origin ships the list that does it switched off, and nothing surfaced that |
+| 0080 | Stop advertising Safe Browsing | No public Chromium Android build has the handler the lookups need, so the settings, the Safety Hub module and the promo card all described nothing |
+| 0081 | Stop the caBLE messaging token | An InstanceID token was fetched at every cold start for a phone-as-security-key feature that needs Chrome Sync |
+| 0082 | Stop the omnibox asking who is signed in | Typing reached GAIA ListAccounts at accounts.google.com, only to decide whether to personalise suggestions |
+| 0083 | Remove Send to your devices | Upstream shows it to signed-out users on purpose, to recruit a Google sign-in that cannot complete here |
+| 0084 | Fix the welcome screen on Android 12 | The reveal was driven only by the splash exit; when that never fired the rows stayed invisible and the circle silently banked defaults |
+| 0085 | Register twelve fewer components | Each registration announces the install to update.googleapis.com; the security-carrying ones are kept and listed |
+| 0086 | Stop the cloud-policy Firebase tokens | A fresh profile fetched two FCM tokens as durable identifiers, for enterprise invalidations this build can never receive |
+| 0087 | Fix two crashes from patch 0080 | Removing a preference row leaves the Java that looks it up holding null; Privacy and security and Safety check both crashed |
 
 Patches 0001 and 0002 are bug fixes that happen to be prerequisites. 0003 is a usability fix.
 0004 through 0010 are the de-Googling, as are 0014 through 0021. 0011 through 0013 fix
@@ -102,6 +110,11 @@ where a new tab animation starts, and an icon that was clipped round rather than
 Sign-in has no single gate in Chromium. Patches 0009, 0010, 0015, 0016 and 0020 each remove a
 different entry point: the settings row, the "You and Google" section, the first-run screen,
 the New Tab Page card, and the toolbar avatar. Assume there are more rather than fewer.
+
+0080 through 0087 are the release-hardening pass, driven by a runtime audit rather than by
+reading code. 0080 and 0087 belong together: removing the Safe Browsing rows crashed two settings
+screens, which only showed up by opening them on a device. 0081 and 0086 are two separate
+consumers of the same Firebase machinery, which is why removing one did not cover the other.
 
 0069 through 0079 came out of using the build on a Pixel Fold and a Pixel 10 Pro XL. 0069 and
 0071 are the AMOLED theme and the relaunch it triggers. 0070 and 0073 close the last Gemini and

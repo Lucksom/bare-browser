@@ -43,10 +43,21 @@ browser, not a distributable fork.
 1. **Chrome Web Store: keep install, remove the update pinger.** Extensions install normally.
    The periodic background update check, which transmits installed extension IDs plus a client
    ID on a timer, is stubbed. Updates happen by reinstalling on demand.
-2. **Safe Browsing removed, component updater retained.** `safe_browsing_mode = 0`. Safe Browsing
-   is already non-functional without an API key, so the outbound lookups are cost without benefit.
-   The component updater stays so CRLSet certificate revocation data keeps refreshing. This leaves
-   one periodic Google connection that carries component versions, not browsing history.
+2. **Safe Browsing UI removed, component updater retained.** The build still compiles Safe
+   Browsing: `safe_browsing_mode` resolves to 2, the Android setting, so the code is present. It
+   cannot work, for a reason separate from the missing API key. Android routes lookups through
+   `SafeBrowsingApiBridge`, which needs a handler injected at startup, and the only callers of
+   `setSafeBrowsingApiHandler` in the tree are tests. Google injects the real one downstream. So
+   every lookup short-circuits and no interstitial can appear, in this or any public build.
+
+   Patch 0080 removes the settings, the Safety Hub module, the Safety Check row and the promo
+   card, because they described protection that never ran. The lookup path itself is untouched:
+   it was already inert.
+
+   The component updater stays so CRLSet revocation data keeps refreshing, along with Certificate
+   Transparency metadata, origin trials, download classification and Widevine. Patch 0085 drops
+   twelve registrations that carried nothing here. This leaves one periodic Google connection,
+   carrying component versions and not browsing history.
 3. **Dead UI: remove the big surfaces, stub the rest.** Sign-in, Sync, and Translate entry points
    are deleted outright. Smaller surfaces keep their UI over a no-op backend. This root-causes the
    2026-08-09 Crash 2 rather than patching it.

@@ -20,7 +20,7 @@ powerful features like browser extensions and uBlock Origin. Bare also adds back
 playback, the ability to save media from sites that normally block it, support for choosing your
 preferred download manager, and much more.
 
-It is a patch series rather than a fork: 79 patches against one pinned revision of **Chromium
+It is a patch series rather than a fork: 87 patches against one pinned revision of **Chromium
 Desktop Android**, so what this repository holds is exactly the difference between stock Chromium
 and Bare, and nothing else.
 
@@ -29,7 +29,7 @@ Built and used on a Pixel 10 Pro XL. Not affiliated with Google or the Chromium 
 - **Base:** Chromium `153.0.7999.0` (commit `945b5115`)
 - **Target:** `is_desktop_android = true`, `target_cpu = "arm64"`
 - **Version:** `1.0.0-alpha.1`, versionCode `801000001`
-- **Size:** 79 patches, 5704 insertions across 221 files
+- **Size:** 87 patches, 5862 insertions across 232 files
 
 ## What you get
 
@@ -38,8 +38,9 @@ Built and used on a Pixel 10 Pro XL. Not affiliated with Google or the Chromium 
 - **[uBlock Origin](https://github.com/gorhill/uBlock), already installed.** The full version,
   not Lite, because Bare keeps Manifest V2 working. Shipped exactly as its author publishes
   it. Remove it like anything else if you would rather not have it.
-- **No Google in the loop.** No background check-ins, no telemetry, no AI features, no sign-in
-  prompts anywhere. DuckDuckGo is the default from first launch.
+- **No telemetry, no AI, no sign-in prompts.** DuckDuckGo is the default from first launch. Two
+  things still reach a server on their own, and both are named in
+  [Network behaviour](#network-behaviour) rather than glossed over.
 - **Save what a page is playing.** Long press a video or an audio player and Bare offers you the
   file, including on sites that stream in pieces and normally offer nothing at all.
 - **Video keeps playing in the background.** Lock the phone or switch apps and the audio carries
@@ -87,11 +88,68 @@ patch series rather than a fork, so every change stays readable and reviewable.
 
 ## What the patches do
 
-Sixty-eight patches against one pinned Chromium revision: crash fixes, the extensions toolbar on
+Eighty-seven patches against one pinned Chromium revision: crash fixes, the extensions toolbar on
 phone layouts, every Google callback and AI surface removed, and the features Bare adds on top.
 
 **[The full list, patch by patch, is in docs/patches.md](docs/patches.md)** along with what is
 removed by build flag instead of by patch, and what is deliberately kept.
+
+## Network behaviour
+
+Measured on a Pixel 3 running Android 12 and an Android 17 emulator, by watching the sockets
+opened under Bare's own uid on a wiped profile. What follows is what was actually observed, not
+what was intended.
+
+**On a second and later start, with an established profile, one host is contacted without being
+asked: `update.googleapis.com`.** That is Chromium's component updater. It is kept deliberately,
+because the components left registered are the ones that carry security or web compatibility:
+
+| Component | Why it stays |
+| --- | --- |
+| CRLSet | certificate revocation |
+| PKIMetadata | Certificate Transparency |
+| SSLErrorAssistant | quality of the TLS interstitial |
+| FileTypePolicies | download danger classification |
+| OriginTrials | web compatibility |
+| Widevine | DRM playback |
+| SafetyTips, CrowdDeny | lookalike-domain and abusive-notification lists, applied locally |
+
+Registration tells Google an install exists, along with a component id, a version, an install
+date and a cohort. Twelve other components were dropped in patch 0085 for buying nothing here:
+the Privacy Sandbox set, Google's omnibox suggestion model, the optimization-hints feed, shopping
+and checkout heuristics, on-device AI history strings, and two Safe Browsing lists that nothing
+can consult. Three more, ActorSafetyLists, Indigo and CaptchaProvider, are still registered
+because their purpose is not clear enough in the tree to remove them confidently.
+
+**On the first run of a fresh profile there is more, and almost all of it is uBlock Origin**
+fetching the filter lists it ships enabled, from the list maintainers and their CDNs rather than
+from Google. That happens once and then on the extension's own schedule.
+
+**The update check contacts GitHub**, and only after the welcome screen has been completed and an
+update preference stored. It is at most one request a day, to a public release feed, sending
+`User-Agent: Bare/<version>` and nothing else: no identifier, no cookies, no version in the
+request. Choosing manual means nothing leaves the device until the Check for updates row is
+tapped.
+
+**What no longer happens**, each verified by re-running the same capture:
+
+- No Firebase or InstanceID registration. A fresh profile previously fetched two FCM tokens for
+  Chromium's cloud-policy invalidation projects and kept them in shared preferences as durable
+  identifiers. Patches 0081 and 0086 removed both consumers; the token files are no longer
+  created at all.
+- No omnibox lookup against `accounts.google.com`. Typing in the address bar used to reach GAIA
+  ListAccounts to decide whether to personalise suggestions.
+- No Safe Browsing traffic. There was never any: see below.
+
+Traffic from Android itself and from Google Play Services is separate from all of this and is not
+affected by anything Bare does.
+
+**Safe Browsing does not work in this build, and no longer claims to.** Chromium Android performs
+lookups through a handler that Google injects in its own build and that no public build has. The
+settings, the Safety Hub module and the promotional cards all described protection that never
+ran, so patch 0080 removed them. Bare shows no phishing or malware interstitial. Treat unknown
+links with the caution you would give a browser with no such feature, because that is what this
+is.
 
 ## Requirements
 
