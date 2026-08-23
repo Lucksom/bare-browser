@@ -1,7 +1,7 @@
-From fdaedf6e71f5fb54c4e253b119900f1e030b24f3 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From fa7ab6202f3784d9ac9a4f5fa6b27a2ac800cd7c Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Thu, 20 Aug 2026 06:39:39 +0000
-Subject: Remove Ask Gemini from the app menu
+Subject: [PATCH] Remove Ask Gemini from the app menu
 
 GlicEnabling.isEnabledForProfile() answers true before the profile has settled,
 so the entry appeared in the menu on the first launch after installing and
@@ -30,6 +30,3 @@ index 630653e4a3..c440f15eae 100644
          if (currentTab == null
                  || currentTab.isIncognito()
                  || currentTab.getWebContents() == null
--- 
-2.34.1
-

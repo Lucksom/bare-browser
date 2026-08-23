@@ -1,7 +1,7 @@
-From 13d92bb737d4bd4e9f10854fec5102cd2b6464b5 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 95d9bed7e9db717912df28d15002c9b2e888a57e Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sun, 16 Aug 2026 17:29:54 +0000
-Subject: [PATCH 23/49] Add a setting to choose the download manager
+Subject: [PATCH] Add a setting to choose the download manager
 
 Settings, Downloads now has "Use an external download manager", which gates the
 handoff added in the previous patch.
@@ -171,6 +171,3 @@ index 484854d67b..b9ca30ce71 100644
        <message name="IDS_AUTO_OPEN_PDF_ENABLED_TITLE" desc="Title for preference that allows the user to indicate whether they want to automatically open a pdf after download completion if the download is triggered by an external app.">
          Automatically open PDFs
        </message>
--- 
-2.34.1
-

@@ -1,7 +1,7 @@
-From 3757f4dc236af5f7c5da9c69bbf8611557a1e351 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 42e7900ab04e66f28de53bad169f34d424f25d56 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Wed, 19 Aug 2026 01:39:45 +0000
-Subject: [PATCH 45/49] Remove the Autofill AI and personal context settings
+Subject: [PATCH] Remove the Autofill AI and personal context settings
 
 The autofill settings screen offered "Smarter form understanding", which is Autofill AI, and a
 personal context section wired to Google's context service. Its own description said the quiet
@@ -73,6 +73,3 @@ index a4e6cd9904..f4fbe4eb74 100644
          // LINT.ThenChange(AutofillEnabledCheckFragment)
      }
  
--- 
-2.34.1
-

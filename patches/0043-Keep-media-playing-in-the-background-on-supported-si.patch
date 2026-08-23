@@ -1,8 +1,7 @@
-From 704ec74f3fe2853fba74b5987090daea6b58adaf Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From d3e7ee48f95e8e03feafe696fcf83dd1aba770e5 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Wed, 19 Aug 2026 01:39:43 +0000
-Subject: [PATCH 43/49] Let supported sites keep playing media in the
- background
+Subject: [PATCH] Keep media playing in the background on supported sites
 
 Adds Settings > Media > Background media playback, off by default. When it is on, a
 supported video site keeps playing after the browser is backgrounded or the screen locks.
@@ -529,6 +528,3 @@ index 302de65601..eb24938d11 100644
      {
        name: "navigatorPlatformOverride",
        type: "String",
--- 
-2.34.1
-

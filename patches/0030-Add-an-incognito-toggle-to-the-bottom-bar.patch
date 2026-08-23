@@ -1,7 +1,7 @@
-From 7cc6c6053f582faed100c1acb0246c23ccc17171 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From f33c767d3dddabf2858659be5440a7306a1d0449 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Tue, 18 Aug 2026 06:38:41 +0000
-Subject: [PATCH 30/49] Add an incognito toggle to the bottom bar
+Subject: [PATCH] Add an incognito toggle to the bottom bar
 
 Restores the fifth bottom bar button. The slot held Ask Gemini until patch 0019
 emptied it, which left four buttons and an unbalanced layout. Incognito is a
@@ -205,6 +205,3 @@ index 4c813f2c79..e9f640c4e4 100644
                  return mExtraContainer;
              case ActionId.NEW_TAB:
                  return mNewTabContainer;
--- 
-2.34.1
-

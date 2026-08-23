@@ -1,7 +1,7 @@
-From bae0fa17417e4bcf904f5153b2cf88a84e4e0c3a Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 0524aa7a5332824e71a619330dfd96f2be34bdf6 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Wed, 19 Aug 2026 07:19:58 +0000
-Subject: [PATCH 53/55] Show the NOAI wordmark on the new tab page
+Subject: [PATCH] Show the NOAI wordmark on the new tab page
 
 ---
  chrome/browser/ui/android/logo/BUILD.gn       |  1 +
@@ -175,6 +175,3 @@ index c06a97ded9..c80dfb3595 100644
  }
  
  bool TemplateUrlServiceAndroid::IsDefaultSearchEngineGoogle(JNIEnv* env) {
--- 
-2.34.1
-

@@ -1,7 +1,7 @@
-From ba1bd81b5bb82405580180eb1246c58e433e2e70 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From bf8c761286635bdef3292be84d7033363c3a8449 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sat, 22 Aug 2026 08:30:59 +0000
-Subject: [PATCH 76/79] Let the current page row reach the omnibox on phones
+Subject: [PATCH] Let the current page row reach the omnibox on phones
 
 Tapping the address bar on a loaded page should offer that page as the first
 suggestion, with share, copy and edit beside it. In Bare it never appeared.

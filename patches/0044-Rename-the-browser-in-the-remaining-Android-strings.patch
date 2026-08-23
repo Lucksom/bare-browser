@@ -1,7 +1,7 @@
-From 503322abae3c087bd80d1b3079f5b918744256ea Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 503137f5009ae5d362b977294a1d85cf7eb56c50 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Wed, 19 Aug 2026 01:39:44 +0000
-Subject: [PATCH 44/49] Rename the browser in the remaining Android strings
+Subject: [PATCH] Rename the browser in the remaining Android strings
 
 Patch 0038 renamed the launcher entry, widget titles, About page and menu description, and
 said at the time that it covered what was visible in the app. Using the build turned up plenty
@@ -2645,6 +2645,3 @@ index 8d6ef17db7..898b011db0 100644
    </message>
    <message name="IDS_STS_IPH_DEFAULT_ON_BODY_V2" desc="Body text before the link for the custom IPH promoting enablement of smart tab sharing by default.">
      You can save time by turning on automatic tab sharing for all threads. Learn more about
--- 
-2.34.1
-

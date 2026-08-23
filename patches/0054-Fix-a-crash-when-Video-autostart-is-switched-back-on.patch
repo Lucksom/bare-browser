@@ -1,7 +1,7 @@
-From 487012900e4af0ce78544f0b8e3a4c2389ed103a Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 0f8ace91db5311de58d1a316c7170031bc88ed1e Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Wed, 19 Aug 2026 07:20:00 +0000
-Subject: [PATCH 54/55] Fix a crash when Video autostart is switched back on
+Subject: [PATCH] Fix a crash when Video autostart is switched back on
 
 ---
  .../site_settings/android/website_preference_bridge.cc       | 5 +++++
@@ -23,6 +23,3 @@ index 915963b0c9..e9c03a7cea 100644
        case ContentSettingsType::AUTO_DARK_WEB_CONTENT:
        case ContentSettingsType::AUTO_PICTURE_IN_PICTURE:
        case ContentSettingsType::BACKGROUND_SYNC:
--- 
-2.34.1
-

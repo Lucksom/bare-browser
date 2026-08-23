@@ -1,8 +1,7 @@
-From 6baa2a5c6df216e8d545dcf313073d5f26193c12 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 4fdf79f9f240b49676685104dcaf98c0d4377457 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Tue, 18 Aug 2026 16:20:52 +0000
-Subject: [PATCH 32/49] Lower the new tab page search box to the middle of the
- screen
+Subject: [PATCH] Centre the new tab page search box vertically
 
 Patch 0027 added a top padding that put the search box roughly 40% down the screen, to
 bring it within thumb reach on a tall phone. Using it on a Pixel 10 Pro XL showed that
@@ -32,6 +31,3 @@ index 645b8c8569..fb74a5dd30 100644
  
      private @Nullable Delegate mDelegate;
      private @Nullable View mSearchBoxView;
--- 
-2.34.1
-

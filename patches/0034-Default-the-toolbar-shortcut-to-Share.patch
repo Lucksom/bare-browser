@@ -1,8 +1,7 @@
-From 6b8d8b8af4c411de4dee6c2e40b5a1be00a7cd59 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 5e68720c553558193d02e60fe46476a2b6991a7b Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Tue, 18 Aug 2026 16:40:34 +0000
-Subject: [PATCH 34/49] Default the toolbar shortcut to Share rather than to
- browsing habits
+Subject: [PATCH] Default the toolbar shortcut to Share
 
 The toolbar shortcut defaulted to AUTO, shown in settings as "based on your usage".
 That asks the segmentation platform to choose the button and to keep changing it as
@@ -46,6 +45,3 @@ index f87f803111..3f8c65a7e9 100644
      }
  
      /**
--- 
-2.34.1
-

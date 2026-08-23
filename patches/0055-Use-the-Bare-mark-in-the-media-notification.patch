@@ -1,7 +1,7 @@
-From 2bbd236c850c3ec87d0f831bc6c12c6d4032188a Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 197c9eecda99d8ecbfbbb4f1752a41424979761d Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Wed, 19 Aug 2026 07:20:02 +0000
-Subject: [PATCH 55/55] Use the Bare mark in the media notification
+Subject: [PATCH] Use the Bare mark in the media notification
 
 ---
  .../java/res/drawable/chrome_product_vd_24.xml | 18 ++++++++++--------
@@ -43,6 +43,3 @@ index 23710a4df5..e0edbab63a 100644
 -      android:pathData="M21.16,8h-4.7C17.42,9.06 18,10.46 18,12c0,1.09 -0.3,2.12 -0.81,3l-3.99,6.92C18.16,21.33 22,17.12 22,12C22,10.58 21.7,9.23 21.16,8z"/>
 +      android:pathData="M12,7.864 a4.136,4.136 0 1,0 0,8.272 a4.136,4.136 0 1,0 0,-8.272 Z"/>
  </vector>
--- 
-2.34.1
-

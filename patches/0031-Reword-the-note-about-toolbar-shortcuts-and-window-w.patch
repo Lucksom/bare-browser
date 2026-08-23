@@ -1,7 +1,7 @@
-From 9ffb76aee9e7753ae33909ba8441d75e8813dc05 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From a4ad9bef23ea21c537d7d39c1fd4d7da11737f47 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Tue, 18 Aug 2026 06:38:59 +0000
-Subject: [PATCH 31/49] Reword the toolbar shortcut window width note
+Subject: [PATCH] Reword the note about toolbar shortcuts and window width
 
 The description on the New tab and Add to bookmarks options read "Only available
 for small windows", which reads as a restriction that excludes phones. It means
@@ -29,6 +29,3 @@ index 21d88260be..fa8fe01efb 100644
        </message>
        <message name="IDS_TOOLBAR_SHORTCUT" desc="Title for toolbar shortcut toggle button in adaptive toolbar button preference page.">
          Toolbar shortcut
--- 
-2.34.1
-

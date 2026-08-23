@@ -22,7 +22,7 @@ themselves are in [`patches/`](../patches); this is the summary of what each one
 | 0015 | Remove the sign-in first-run screen | Promoted a sign-in this build cannot do, and claimed data is sent to Google |
 | 0016 | Stop showing the NTP sign-in card | "Get better content": sign in to personalise a feed this build cannot use |
 | 0017 | Remove the Chrome tips module | A carousel of Google promos: history sync, sign-in, passwords, Safe Browsing |
-| 0018 | Never offer the web app restore promo | Restores apps from devices "connected to this account", impossible here |
+| 0018 | Remove the web app restore promo | Restores apps from devices "connected to this account", impossible here |
 | 0019 | Remove the Ask Gemini button | The bottom bar's extra slot resolved to Gemini, which demands account verification |
 | 0020 | Remove the avatar sign-in button | "Signed out. Opens options to sign in." on every new tab page |
 | 0021 | Stop offering Gemini as a toolbar shortcut | Otherwise the button removed in 0019 could be put back from Settings |
@@ -60,7 +60,7 @@ themselves are in [`patches/`](../patches); this is the summary of what each one
 | 0053 | Show the NOAI wordmark on the new tab page | The engine had no logo, so the page showed nothing |
 | 0054 | Fix a crash when Video autostart is switched back on | Introduced by 0049 |
 | 0055 | Use the Bare mark in the media notification | The lock screen still showed Chromium's |
-| 0056 | Look under overlays laid over images and video | Sites cover media with a transparent layer, which defeated the long press |
+| 0056 | Find the media under a click-blocking overlay | Sites cover media with a transparent layer, which defeated the long press |
 | 0057 | Keep Manifest V2 extensions working | Chromium 153 disables MV2 outright; full uBlock Origin needs it |
 | 0058 | Ship the MV2 action schemas in this build | Their absence killed the renderer for any extension using them |
 | 0059 | Ship uBlock Origin with the browser | Pre-installed, unpinned, removable like anything else |
@@ -73,6 +73,17 @@ themselves are in [`patches/`](../patches); this is the summary of what each one
 | 0066 | Follow range requests back to the whole file | A range-fetched URL names a slice, not the file, and audio is a separate track |
 | 0067 | Stop asking the user to sign in to a Google account | Six surfaces built the same promo; all six ask one method first |
 | 0068 | Let extension context menu items run their own command | The menu overwrote the listener extensions arrive with, so tapping one did nothing |
+| 0069 | Add a Dark AMOLED theme | A third theme taking flat surfaces to true black; raised surfaces keep a small lift so menus stay separable |
+| 0070 | Turn off Glic, the Gemini integration | Every Glic surface asks one class first, so closing that gate removes all of them at once |
+| 0071 | Cover the activity relaunch when the theme changes | Switching theme recreates the activity, which flashed the outgoing colours on the way through |
+| 0072 | Rename the browser in eleven more strings | The strings the earlier renaming passes missed |
+| 0073 | Make Google sign-in and sync unreachable | Five ways in: the settings rows, two deep-link routes and the settings-search entries |
+| 0074 | Look for Bare's own updates on GitHub | One plain request to the public release feed, no identifier and nothing scheduled; automatic or manual |
+| 0075 | Stop the launch splash flashing white on a dark theme | Android resolves the splash against the system's night mode, before any of the browser runs |
+| 0076 | Let the current page row reach the omnibox on phones | The desktop Android target hid share, copy and edit for the page you are on |
+| 0077 | Read night mode from the browser, not from a Context | The renderer filled white because the Context reachable from a WebContents answered for the system |
+| 0078 | Keep the verbatim match the current page row needs | The row is built from a match the desktop target declined to produce |
+| 0079 | Name the filter list that strips tracking from links | uBlock Origin ships the list that does it switched off, and nothing surfaced that |
 
 Patches 0001 and 0002 are bug fixes that happen to be prerequisites. 0003 is a usability fix.
 0004 through 0010 are the de-Googling, as are 0014 through 0021. 0011 through 0013 fix
@@ -91,6 +102,13 @@ where a new tab animation starts, and an icon that was clipped round rather than
 Sign-in has no single gate in Chromium. Patches 0009, 0010, 0015, 0016 and 0020 each remove a
 different entry point: the settings row, the "You and Google" section, the first-run screen,
 the New Tab Page card, and the toolbar avatar. Assume there are more rather than fewer.
+
+0069 through 0079 came out of using the build on a Pixel Fold and a Pixel 10 Pro XL. 0069 and
+0071 are the AMOLED theme and the relaunch it triggers. 0070 and 0073 close the last Gemini and
+Google account surfaces, and 0072 the last of the naming. 0074 is the only thing in the browser
+that contacts a server the user did not navigate to. 0075, 0077 and 0078 are all the same class
+of bug: something asked a Context, or the build target, a question only the browser could answer,
+and got the system's answer back.
 
 ## Removed by build flag
 

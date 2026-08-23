@@ -1,7 +1,7 @@
-From 22d0f196e5bb15738ad91dd1faa6251bc7c00d7d Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 1ca8a091bf932f1c7ebc25bdd3fdbbbf50c863c3 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Tue, 18 Aug 2026 20:21:20 +0000
-Subject: [PATCH 42/49] Add the Bare welcome screen
+Subject: [PATCH] Add the Bare welcome screen
 
 A one time welcome on the first launch after install: the wordmark, a line about what the
 browser is for, and a circle to start browsing, with the credit pinned to the bottom.
@@ -432,6 +432,3 @@ index 0000000000..bd95bfc576
 +        return ObjectAnimator.ofFloat(view, View.ALPHA, view.getAlpha(), 0f);
 +    }
 +}
--- 
-2.34.1
-

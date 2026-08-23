@@ -1,7 +1,7 @@
-From bfb00d782b02a31d6f395d48ac4ba0193e94933d Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 634de6f21c4161f7a5c0a6d988af0cb71096ea18 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sun, 16 Aug 2026 08:07:02 +0000
-Subject: [PATCH 18/49] Never offer the web app restore promo
+Subject: [PATCH] Remove the web app restore promo
 
 The sheet restores apps used on devices connected to a Google account, so it can
 never have anything to offer in this build.
@@ -37,6 +37,3 @@ index 5a4960fb6a..8579570051 100644
          if (!ChromeFeatureList.isEnabled(ChromeFeatureList.PWA_RESTORE_UI)) {
              Log.i(TAG, "Not showing PWA Restore promo, feature flag is disabled.");
              return false;
--- 
-2.34.1
-

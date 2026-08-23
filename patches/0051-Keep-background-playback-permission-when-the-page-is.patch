@@ -1,8 +1,7 @@
-From 1dc1ac16056d68ad979c4a6250c02d5c317b5923 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 2b697d9eef6d537c6cda7758293f68ed0db7c56d Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Wed, 19 Aug 2026 07:19:53 +0000
-Subject: [PATCH 51/55] Keep background playback permission when the page is
- hidden
+Subject: [PATCH] Keep background playback permission when the page is hidden
 
 ---
  .../blink/public/platform/web_media_player.h       |  5 +++++
@@ -112,6 +111,3 @@ index 5a940ae82f..995d291f3e 100644
    // Whether embedded media experience is currently enabled.
    bool embedded_media_experience_enabled_ = false;
  
--- 
-2.34.1
-

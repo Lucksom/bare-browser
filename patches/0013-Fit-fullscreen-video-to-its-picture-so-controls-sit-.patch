@@ -1,8 +1,7 @@
-From 87123701a1e0cc6a8d44aced08b48f72599f0ac4 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From a9c2d8c6b250e6bf1a4a37daf24697eeceda1449 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sun, 16 Aug 2026 05:31:51 +0000
-Subject: [PATCH 13/49] Size a fullscreened video to its picture so the
- controls sit on it
+Subject: [PATCH] Fit fullscreen video to its picture so controls sit on it
 
 The generic :fullscreen rule stretches the fullscreen element edge to edge and
 letterboxes the picture inside it with object-fit: contain. The UA media
@@ -70,6 +69,3 @@ index f90620f4f8..ff43a54f11 100644
  /* TODO(foolip): In the spec, there's a ::backdrop block with the properties
     shared with dialog::backdrop (see html.css). */
  :not(:root):fullscreen::backdrop {
--- 
-2.34.1
-

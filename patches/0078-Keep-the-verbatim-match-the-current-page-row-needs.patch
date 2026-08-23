@@ -1,8 +1,7 @@
-From f2debec73156ecc7c04186eeb406470ea1f956d9 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From bce8c2275a2ebde832d811ae3eab69a64c497bea Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sat, 22 Aug 2026 15:43:08 +0000
-Subject: [PATCH 78/79] Produce the verbatim match that the current page row is
- built from
+Subject: [PATCH] Keep the verbatim match the current page row needs
 
 Patch 0076 stopped EditUrlSuggestionProcessor declining the row on phones, and
 the row still did not appear. It had nothing to work with.

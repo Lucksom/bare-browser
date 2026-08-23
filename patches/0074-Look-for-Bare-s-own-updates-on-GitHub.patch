@@ -1,7 +1,7 @@
-From 6904edb93278a8eddcd093487dcf6ace879354d0 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 01cbb2a75d4084d50665a5a25cf0216de9be7c21 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sat, 22 Aug 2026 07:40:03 +0000
-Subject: [PATCH 74/79] Look for Bare's own updates on GitHub
+Subject: [PATCH] Look for Bare's own updates on GitHub
 
 Bare ships outside any store, so nothing tells anyone that a fix exists. Until
 now the only way to find out was to visit the releases page and compare version

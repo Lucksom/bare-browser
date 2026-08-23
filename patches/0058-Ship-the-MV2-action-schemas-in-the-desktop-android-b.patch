@@ -1,8 +1,7 @@
-From 62985d1f0ec3de31331b2faac21327f7ac81f067 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From a1e423ca8350bab92f6a3bbad14871c8de51f374 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Wed, 19 Aug 2026 20:12:17 +0000
-Subject: [PATCH 58/58] Ship the MV2 action schemas in the desktop-android
- build
+Subject: [PATCH] Ship the MV2 action schemas in the desktop-android build
 
 browser_action and page_action are the Manifest V2 spellings of action, which
 this configuration already builds. Upstream bundles their schemas only with the
@@ -64,6 +63,3 @@ index e15cd42f87..b86cc426f6 100644
    if (is_chromeos) {
      uncompiled_sources_ += [
        "chromeos_info_private.json",
--- 
-2.34.1
-

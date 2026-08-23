@@ -1,7 +1,7 @@
-From a5901934207c9d82bcc729c1155e4ef80dface6c Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 27bfb385e3c29d19d37f871dde3f2c9a13614dfa Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Mon, 17 Aug 2026 16:51:13 +0000
-Subject: [PATCH 24/49] Browse the Chrome Web Store as a desktop site
+Subject: [PATCH] Browse the Chrome Web Store as a desktop site
 
 The store serves a mobile layout to this browser, and that layout has no install
 button, so "Discover more extensions" leads to a page that cannot install
@@ -99,6 +99,3 @@ index 44026d6ae9..65f3a08eb5 100644
                  AUTOFILL_ASSISTANT_PROACTIVE_HELP_ENABLED,
                  AUTOFILL_THIRD_PARTY_MODE_STATE,
                  AUXILIARY_SEARCH_CONSUMER_SCHEMA_FOUND,
--- 
-2.34.1
-

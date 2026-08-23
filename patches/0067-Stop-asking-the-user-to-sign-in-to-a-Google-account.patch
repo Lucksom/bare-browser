@@ -1,7 +1,7 @@
-From 4103a26eeff43972041b577c694207fe8f14b3fc Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From c57e4a175c48fe3f1389c0c462cc13d119c6797c Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Thu, 20 Aug 2026 15:18:25 +0000
-Subject: Stop asking the user to sign in to a Google account
+Subject: [PATCH] Stop asking the user to sign in to a Google account
 
 Opening the bookmark manager for the first time produced a card with the
 multicoloured Chrome logo, "Get all your bookmarks", and a Sign in button. On a
@@ -51,6 +51,3 @@ index 9511704a28..b01acadad0 100644
      }
  
      /** Builds a promo view object for the corresponding access point. */
--- 
-2.34.1
-

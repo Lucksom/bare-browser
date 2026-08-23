@@ -1,5 +1,5 @@
-From 48a61270c380ba41b19a44d739bbc0299fd626fc Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From b6d7b3790d12e5f6181bf83cc3099b973318228a Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Wed, 19 Aug 2026 20:32:34 +0000
 Subject: [PATCH] Ship uBlock Origin with the browser
 
@@ -320,6 +320,3 @@ index 0000000000..f6199e2f10
 +
 +That directory also records where the file came from, its checksum, and its
 +licence. uBlock Origin is GPL-3.0 and is redistributed unmodified.
--- 
-2.34.1
-

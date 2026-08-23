@@ -1,8 +1,7 @@
-From 1de501f3b44559e792d25342156e160bb2feded7 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 2911c01f644bb6f7f5bbebf675ec427354f94b09 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sat, 15 Aug 2026 22:23:45 +0000
-Subject: [PATCH 07/49] Remove the Google Cloud Messaging push channel from the
- manifest
+Subject: [PATCH] Remove the Google Cloud Messaging push channel
 
 Drops ChromeGcmListenerService, GCMBackgroundService and InvalidationGcmUpstreamSender, the Google Now account-access permission, and - via tools:node=remove - the c2dm RECEIVE permission and FirebaseInstanceIdReceiver.
 
@@ -74,6 +73,3 @@ index f1386aba9d..490a2ec709 100644
  
          <!-- Android Notification service listener -->
          <service android:name="org.chromium.chrome.browser.notifications.NotificationService"
--- 
-2.34.1
-

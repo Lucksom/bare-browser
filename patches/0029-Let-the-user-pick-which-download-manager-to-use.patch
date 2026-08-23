@@ -1,8 +1,7 @@
-From 005de3da1755e596fdc8117414d4db844025a615 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From f048fe775c27776ce60bef3a10112aa32a92cb78 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Tue, 18 Aug 2026 05:00:03 +0000
-Subject: [PATCH 29/49] Let the user pick which download manager receives
- downloads
+Subject: [PATCH] Let the user pick which download manager to use
 
 Settings, Downloads gains a Download manager app list: Ask every time, which
 stays the default, followed by every handler installed on the device. The list
@@ -297,6 +296,3 @@ index b9ca30ce71..21d88260be 100644
        <message name="IDS_EXTERNAL_DOWNLOAD_MANAGER_TITLE" desc="Title for a preference that lets the user hand downloads to a separate download manager app instead of downloading in the browser.">
          Use an external download manager
        </message>
--- 
-2.34.1
-

@@ -1,7 +1,7 @@
-From 9fe9aae65fa8a37693dd564fff1bc78fba655925 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From fa11d0488950d92db72dcbe4d72cbc4459667661 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sun, 16 Aug 2026 08:07:00 +0000
-Subject: [PATCH 16/49] Stop showing the new tab page sign-in card
+Subject: [PATCH] Stop showing the new tab page sign-in card
 
 The card offers to sign into a Google account to personalise the feed, which
 this build deliberately cannot do, so it is a dead end that cannot be dismissed
@@ -26,6 +26,3 @@ index c7a41cd038..cb0b1a7391 100644
      }
  
      @Override
--- 
-2.34.1
-

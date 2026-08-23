@@ -1,7 +1,7 @@
-From 9ec2a565d47bda87e590744b2c56b79650fb465d Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From fbc26ebb5cba245fd15b1bdf1a08a0f2b15865b5 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Thu, 20 Aug 2026 15:31:19 +0000
-Subject: Let extension context menu items run their own command
+Subject: [PATCH] Let extension context menu items run their own command
 
 Tapping uBlock Origin's "Block element" killed the browser. The stack was an
 AssertionError out of ChromeContextMenuPopulator, from the catch-all at the end
@@ -90,6 +90,3 @@ index aebe01b9b2..761316ce04 100644
              }
              if (item.type == ContextMenuItemType.CONTEXT_MENU_ITEM_WITH_ICON_BUTTON) {
                  PropertyModel model = item.model;
--- 
-2.34.1
-

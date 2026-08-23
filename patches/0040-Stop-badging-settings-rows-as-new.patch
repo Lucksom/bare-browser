@@ -1,7 +1,7 @@
-From ea012c26cf50c2e37104ec4ef6dfdf1c65a07fa3 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From f10ad285bee4e4da8da9fec7ef20fc7f14021a65 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Tue, 18 Aug 2026 20:21:18 +0000
-Subject: [PATCH 40/49] Stop badging settings rows as new
+Subject: [PATCH] Stop badging settings rows as new
 
 Upstream superscripts "New" beside a recently added preference for its first few views,
 counted per preference. Address bar and Appearance both carry it, so a fresh profile always
@@ -32,6 +32,3 @@ index d54e5cd46b..454a4514d1 100644
  
          if (!showNewLabelForPref) {
              pref.setTitle(title);
--- 
-2.34.1
-

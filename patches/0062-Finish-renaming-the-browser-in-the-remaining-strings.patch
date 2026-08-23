@@ -1,7 +1,7 @@
-From f8ce58f7f9ea5b4d02a111d9c15987426f6c812d Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 4136662260bd4c72c84dcb33ed3148ea154c44d1 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Thu, 20 Aug 2026 06:39:38 +0000
-Subject: Finish renaming the browser in the remaining strings
+Subject: [PATCH] Finish renaming the browser in the remaining strings
 
 An earlier pass renamed Chrome but left Chromium, which is what this build
 actually says: is_chrome_branded is false here, so the strings that ship are
@@ -4075,6 +4075,3 @@ index b071895a60..a70b72593d 100644
        </message>
      </if>
    </if>
--- 
-2.34.1
-

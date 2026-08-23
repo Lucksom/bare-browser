@@ -1,7 +1,7 @@
-From 86ea44dd4f3710b4551b4e8aafd1a87ff1d6fc11 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From f90d8310c04569cdcc4393b0fa252463f9057603 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sat, 22 Aug 2026 05:13:14 +0000
-Subject: [PATCH 71/79] Cover the activity relaunch when the theme changes
+Subject: [PATCH] Cover the activity relaunch when the theme changes
 
 Changing the theme calls recreate(), which tears every activity down and builds
 it again. Measured on a Pixel Fold that is about 700ms before the visible

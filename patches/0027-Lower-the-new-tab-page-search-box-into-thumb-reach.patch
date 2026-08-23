@@ -1,7 +1,7 @@
-From 527e3635a4f987d6fb9caadb9fef759f1e15fab5 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 0ce5f4cfa7a215fdadf1aaf9990a558765b6afa5 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Tue, 18 Aug 2026 04:04:04 +0000
-Subject: [PATCH 27/49] Lower the new tab page search box into thumb reach
+Subject: [PATCH] Lower the new tab page search box into thumb reach
 
 The search box sat near the top because the shortcuts row and cards below it
 used to fill the page. With those hidden by default it is a long reach on a
@@ -120,6 +120,3 @@ index c6fca8526d..645b8c8569 100644
      /** Sets the search box view. */
      public void setSearchBoxView(View view) {
          mSearchBoxView = view;
--- 
-2.34.1
-

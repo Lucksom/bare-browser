@@ -1,7 +1,7 @@
-From 3240f62baa5f382b212b8970485e3c41afdcbb0c Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 154b14d9e9ed92a82f33e6b52df694056d6f82d5 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sun, 16 Aug 2026 08:07:01 +0000
-Subject: [PATCH 17/49] Remove the Chrome tips module from the new tab page
+Subject: [PATCH] Remove the Chrome tips module from the new tab page
 
 registerTipModules now registers nothing, so the tips carousel never appears.
 
@@ -53,6 +53,3 @@ index 725b03442b..319ef563b8 100644
      }
  
      /**
--- 
-2.34.1
-

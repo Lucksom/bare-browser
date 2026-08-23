@@ -1,7 +1,7 @@
-From 7171e6578959c0e8e61f833ff61b65e58238e4fb Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 3686e9ce86c05865307eb9de931e40eeb65820ed Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sun, 16 Aug 2026 08:42:20 +0000
-Subject: [PATCH 21/49] Stop offering Gemini as a toolbar shortcut
+Subject: [PATCH] Stop offering Gemini as a toolbar shortcut
 
 Patch 0019 removed the Ask Gemini button from the bottom bar, but the adaptive
 toolbar is a separate feature with its own settings screen, and it listed Gemini
@@ -37,6 +37,3 @@ index bf6ed2314f..86dae33e39 100644
              maybeSetUiStateFromBundleArgs();
              mRadioButtonGroup.setStatePredictor(
                      new AdaptiveToolbarStatePredictor(
--- 
-2.34.1
-

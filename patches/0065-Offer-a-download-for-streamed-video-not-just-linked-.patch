@@ -1,7 +1,7 @@
-From e60bcdef32f1e14d3ef70fa0dcdd1307aabb3c8a Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 9beb2210b46b37449045d1289fe968071d06d4b7 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Thu, 20 Aug 2026 10:29:58 +0000
-Subject: Offer a download for video the page streams rather than links to
+Subject: [PATCH] Offer a download for streamed video, not just linked video
 
 A site that plays video through Media Source gives the context menu nothing to
 work with. The <video> element points at a blob, which has no file behind it,
@@ -650,6 +650,3 @@ index da9cca9433..65964883e2 100644
  
    if (base::FeatureList::IsEnabled(finds::features::kChromeFinds)) {
      if (auto* finds_service =
--- 
-2.34.1
-

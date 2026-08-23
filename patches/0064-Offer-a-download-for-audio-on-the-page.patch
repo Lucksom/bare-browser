@@ -1,7 +1,7 @@
-From b42714ba63fe83d7357a624b4f86a2188ea989cf Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From ae26d8f0680906d29f82152e402ce63cdc1d39d4 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Thu, 20 Aug 2026 06:54:26 +0000
-Subject: Offer a download for audio elements
+Subject: [PATCH] Offer a download for audio on the page
 
 Long pressing an <audio> element produced a menu with nothing on it. The cause
 was not the menu but the plumbing: ContextMenuParams has always been handed the
@@ -235,6 +235,3 @@ index 89d60b2fda..871810c679 100644
          } else if (params.isImage()) {
              return params.isAnchor() ? "ImageLink" : "Image";
          } else if (params.getOpenedFromHighlight()) {
--- 
-2.34.1
-

@@ -1,7 +1,7 @@
-From 5c5d2da0928fb9700a7d01f29238cf9e61621fc3 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From c7416560199eb5e01e18c2eec8bfd8a57df9c9f9 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Thu, 20 Aug 2026 06:39:35 +0000
-Subject: Use the Bare mark for the launcher icon
+Subject: [PATCH] Use the Bare mark for the launcher icon
 
 The artwork fills the icon rather than sitting on a white circle: the design
 lives entirely in the background layer with an empty foreground, since nothing
@@ -9710,7 +9710,4 @@ o4I7Y9RsTO&@E1Z@jhtwAIM&KqcT!Y<uTYR749xXwbW!*IA3L-Z@Bjb+
 
 literal 0
 HcmV?d00001
-
--- 
-2.34.1
 

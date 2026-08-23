@@ -1,7 +1,7 @@
-From b1134647e39f42ea21567c5ba74475bcc074894b Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From e822b5e886c431bfcd7832d7ba3dd68eee0b1357 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sat, 22 Aug 2026 05:32:13 +0000
-Subject: [PATCH 72/79] Rename the browser in eleven more user-visible strings
+Subject: [PATCH] Rename the browser in eleven more strings
 
 Patches 0044 and 0062 renamed a great deal of text but reached only fourteen of
 the 250 user-visible strings that still name Chrome or Google. These are the

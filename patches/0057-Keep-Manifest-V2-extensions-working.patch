@@ -1,7 +1,7 @@
-From cb657bf68afee800c2a5c7fb52debb26c378afee Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 59c1253760a8ab6bac5c6896ed735356d98f216a Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Wed, 19 Aug 2026 20:12:02 +0000
-Subject: [PATCH 57/58] Keep Manifest V2 extensions working
+Subject: [PATCH] Keep Manifest V2 extensions working
 
 Chromium finished removing Manifest V2, and with it the whole deprecation
 experiment: ManifestV2ExperimentManager, ExtensionManifestV2Availability,
@@ -56,6 +56,3 @@ index 5841d3dfbc..e58b1f5eb5 100644
  }
  
  }  // namespace
--- 
-2.34.1
-

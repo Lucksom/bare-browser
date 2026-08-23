@@ -1,7 +1,7 @@
-From 859da30cb6372947643f8b3470059647df1ba36e Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From a327e2ddc1ae5de4882a5eff2d0d7c6f04f0f506 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Tue, 18 Aug 2026 04:23:14 +0000
-Subject: [PATCH 28/49] Move the tab switcher toolbar to the bottom
+Subject: [PATCH] Move the tab switcher toolbar to the bottom
 
 The tab switcher kept its new tab and menu buttons at the top while the browsing
 toolbar sits at the bottom, so the two modes disagreed and the buttons were a
@@ -59,6 +59,3 @@ index 8a7683ef7d..11cab7259b 100644
      public static final BooleanCachedFeatureParam sAndroidBottomBarShowGlicSettingToggle =
              newBooleanCachedFeatureParam(ANDROID_BOTTOM_BAR, "show_glic_setting_toggle", false);
      public static final BooleanCachedFeatureParam sAndroidBottomBarShowUpdateBadge =
--- 
-2.34.1
-

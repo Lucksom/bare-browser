@@ -1,7 +1,7 @@
-From 6b93d31c58ddbbef7bf21749ef4ff90cc1815856 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 7ec8f5a656831b2d3fef06ba894f2ad154c96531 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sat, 22 Aug 2026 19:11:04 +0000
-Subject: [PATCH 79/79] Point at the list that strips tracking from links
+Subject: [PATCH] Name the filter list that strips tracking from links
 
 Copied links keep their tracking parameters. uBlock Origin can remove them, and
 it already ships in the browser, but the list that does it is not one of the

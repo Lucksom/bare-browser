@@ -1,7 +1,7 @@
-From 418751ffdfbb2b6efca32301d1a0568d2e92f066 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 0b7f4ec06fb67bbbb63e3ec21eb7f7d29b78c73d Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sat, 22 Aug 2026 05:52:11 +0000
-Subject: [PATCH 73/79] Make Google sign-in and sync unreachable
+Subject: [PATCH] Make Google sign-in and sync unreachable
 
 Patch 0010 removed the sign-in row, the Google services row and their section
 header from the main settings list, and five other patches removed the promos,

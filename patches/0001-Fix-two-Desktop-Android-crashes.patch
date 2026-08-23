@@ -1,8 +1,7 @@
-From 6a5cbe671e3187b2999b8507d082acfd93781ae3 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 7e79bbde5001dd2e79e28af6086664ba211c00ef Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sat, 15 Aug 2026 04:06:56 +0000
-Subject: [PATCH 01/49] Fix two Desktop Android crashes from the 2026-08-09
- report
+Subject: [PATCH] Fix two Desktop Android crashes
 
 Crash 1: ExtensionActionPopupContents.handleKeyboardEvent passed a nullable Android KeyEvent through to KeyboardShortcuts, which dereferenced it without a null check. A synthetic web keyboard event can legitimately lack an Android KeyEvent, so treat a null event as unhandled and return false.
 
@@ -111,6 +110,3 @@ index 0000000000..0aef6ed422
 +        assertTrue(callbackInvoked.get());
 +    }
 +}
--- 
-2.34.1
-

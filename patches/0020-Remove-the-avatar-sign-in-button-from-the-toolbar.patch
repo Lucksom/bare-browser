@@ -1,7 +1,7 @@
-From addf7ea738184df933d4a814bfe91a7e1f4a1a4f Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 4569b812c7cea5d45252de46d987975aec2f7cb1 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sun, 16 Aug 2026 08:19:47 +0000
-Subject: [PATCH 20/49] Remove the avatar sign-in button from the toolbar
+Subject: [PATCH] Remove the avatar sign-in button from the toolbar
 
 The button sits on every new tab page and describes itself as "Signed out. Opens
 options to sign in.", so it is a dead end in a build where signing in is
@@ -49,6 +49,3 @@ index 0754d3c85f..b403aa931d 100644
      }
  
      private void updateButtonState() {
--- 
-2.34.1
-

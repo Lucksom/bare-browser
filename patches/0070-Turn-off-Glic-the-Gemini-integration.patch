@@ -1,7 +1,7 @@
-From 787836e589452f8399dc0bedb97f19a845fae3b1 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 3a5ea7897072bc27c02a0ca36740a2b16d03ba25 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sat, 22 Aug 2026 04:59:04 +0000
-Subject: [PATCH 70/79] Turn off Glic, the Gemini integration, everywhere
+Subject: [PATCH] Turn off Glic, the Gemini integration
 
 An unfolded Pixel Fold showed an "Ask Gemini" button in the tab strip, and
 tapping it opened a Google account verification sheet. Patches 0019 and 0021

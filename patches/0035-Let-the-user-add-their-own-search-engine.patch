@@ -1,7 +1,7 @@
-From a992d4d2e6a14ecd362ee71beb35858ce8311eb6 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From a3b98628afe55d9cc53bd4dcbb0bcf2232a8f9af Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Tue, 18 Aug 2026 17:11:31 +0000
-Subject: [PATCH 35/49] Let the user add their own search engine
+Subject: [PATCH] Let the user add their own search engine
 
 Android had no way to add a search engine by hand. That matters more here than upstream:
 the prepopulated engine list lives in third_party/search_engines_data, which is not tracked
@@ -65,6 +65,3 @@ index ec6c6282a4..57706c2eab 100644
  
  // Enables additional site search providers for the Site search Starter Pack.
  BASE_FEATURE(kStarterPackExpansion, enable_if(!IS_IOS));
--- 
-2.34.1
-

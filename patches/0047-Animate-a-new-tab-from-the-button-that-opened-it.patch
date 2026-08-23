@@ -1,8 +1,7 @@
-From 842f5323652f6566620aee8636d01d3030a04e4c Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From fa9d3b7ca84e17a576577b2c73517813869e3ca7 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Wed, 19 Aug 2026 02:05:56 +0000
-Subject: [PATCH 47/49] Open a new tab from the tab switcher toward the button
- that was pressed
+Subject: [PATCH] Animate a new tab from the button that opened it
 
 Opening a tab from a page animated out of the bottom, matching the new tab button, while
 doing the same thing from the tab switcher grew it from the top left corner instead.
@@ -77,6 +76,3 @@ index a18f1f9d12..56efd6e103 100644
          cornerRadius =
                  getContext()
                          .getResources()
--- 
-2.34.1
-

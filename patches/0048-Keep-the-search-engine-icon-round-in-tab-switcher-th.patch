@@ -1,8 +1,7 @@
-From 325a5d64220a3c8a1bc4fbb88e0fd860e8888d62 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From e55b758800c50658df61721783bb2a2987547a8d Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Wed, 19 Aug 2026 02:05:57 +0000
-Subject: [PATCH 48/49] Keep the search engine icon round in tab switcher
- thumbnails
+Subject: [PATCH] Keep the search engine icon round in tab switcher thumbnails
 
 The icon in the new tab page search box is round on the page and square in the tab switcher.
 
@@ -79,6 +78,3 @@ index 893f932246..6bd66f86b0 100644
      }
  
      void setPlusButtonClickListener(@Nullable OnClickListener listener) {
--- 
-2.34.1
-

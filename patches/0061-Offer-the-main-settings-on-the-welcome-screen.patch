@@ -1,7 +1,7 @@
-From 03d20aff7d88f7b8d83237bc199c382d965fa895 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From c3ca979281957621d910d4ddb7257d5cce34458f Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Thu, 20 Aug 2026 06:39:36 +0000
-Subject: Offer the main settings on the welcome screen
+Subject: [PATCH] Offer the main settings on the welcome screen
 
 The first launch now asks about the handful of things people change first:
 search engine, address bar position, autofill provider, an external download
@@ -990,6 +990,3 @@ index 5ed555756b..a639febc5f 100644
                  DOWNLOAD_EXTERNAL_MANAGER_PACKAGE,
                  DOWNLOAD_USE_EXTERNAL_DOWNLOAD_MANAGER,
                  WEBSTORE_DESKTOP_SITE_SEEDED,
--- 
-2.34.1
-

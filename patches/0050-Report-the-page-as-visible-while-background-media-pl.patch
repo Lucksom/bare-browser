@@ -1,8 +1,7 @@
-From 8b01fedb65b495fe5c84db0991faa699d1fcb229 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 0b6acb79dd90e651a633a9b85c1217b97b1c3fc5 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Wed, 19 Aug 2026 07:19:51 +0000
-Subject: [PATCH 50/55] Keep sites told the page is visible while background
- media plays
+Subject: [PATCH] Report the page as visible while background media plays
 
 ---
  .../blink/renderer/core/dom/document.cc       | 28 ++++++++++++++++---
@@ -95,6 +94,3 @@ index 4ab80eb038..6614bf3483 100644
  
      // Private Token API (https://github.com/wicg/trust-token-api)
      [CallWith=ScriptState, Measure, RaisesException, NewObject, SecureContext, RuntimeEnabled=PrivateStateTokens] Promise<boolean> hasPrivateToken(USVString issuer);
--- 
-2.34.1
-

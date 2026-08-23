@@ -1,7 +1,7 @@
-From 4d64e50a91d80f33b5888e754f4bfac7140191fa Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 1c68ecc23e72adf316fb923859130a1b6928c47c Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Tue, 18 Aug 2026 20:21:19 +0000
-Subject: [PATCH 41/49] Skip the first run experience
+Subject: [PATCH] Skip the first run experience
 
 The first launch after install went through FirstRunActivity before reaching the browser.
 It drew an icon and a spinner for a moment, then handed off, so the first launch played two
@@ -45,6 +45,3 @@ index ae781f16eb..9e97876d0a 100644
      }
  
      /**
--- 
-2.34.1
-

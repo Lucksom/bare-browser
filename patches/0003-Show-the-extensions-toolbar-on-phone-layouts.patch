@@ -1,7 +1,7 @@
-From e287d479257491fc302dafa4a54cbc8e49071c7e Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 27911e3d3d2ce181f1c6017cfcf8ce517d36209e Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sat, 15 Aug 2026 17:56:36 +0000
-Subject: [PATCH 03/49] Enable the extensions toolbar on phone-sized layouts
+Subject: [PATCH] Show the extensions toolbar on phone layouts
 
 The extensions toolbar was reachable only on tablet-width layouts, so on a phone there was no way to open an extension popup, pin an extension, or set per-site permissions - chrome://extensions only offers enable/disable/remove.
 
@@ -56,6 +56,3 @@ index 9e1f21d5a0..d6ed475506 100644
          <org.chromium.chrome.browser.toolbar.top.ToggleTabStackButton
              android:id="@+id/tab_switcher_button"
              style="@style/ToolbarHoverableButton"
--- 
-2.34.1
-

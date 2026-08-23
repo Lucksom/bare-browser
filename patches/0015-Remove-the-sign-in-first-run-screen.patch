@@ -1,7 +1,7 @@
-From 4f40ba6ff93c93102810729ee4425c06138025db Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 09fb0b9fc0c62eaf9779c98e9d24e91e9945941f Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sun, 16 Aug 2026 05:31:52 +0000
-Subject: [PATCH 15/49] Remove the sign-in first run screen
+Subject: [PATCH] Remove the sign-in first run screen
 
 The first run screen promotes signing into a Google account, which this build
 deliberately cannot do, and its footer states that usage and crash data are sent
@@ -61,6 +61,3 @@ index cacdc31566..0316ee0279 100644
          }
  
          if (mPagerAdapter == null) {
--- 
-2.34.1
-

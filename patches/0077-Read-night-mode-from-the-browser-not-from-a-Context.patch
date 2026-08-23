@@ -1,8 +1,7 @@
-From a596cb98099aba3e7df2a0fc839ad885f6a3c0ed Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 6b772dee518c2dcde629514e4a4d4b7d8898b97b Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sat, 22 Aug 2026 14:49:30 +0000
-Subject: [PATCH 77/79] Ask the browser, not a Context, whether night mode is
- on
+Subject: [PATCH] Read night mode from the browser, not from a Context
 
 Patch 0033 stopped the renderer filling white before a page paints, by setting
 the page base background to black in night mode. It went on filling white

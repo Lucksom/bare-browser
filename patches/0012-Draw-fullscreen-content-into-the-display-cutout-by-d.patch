@@ -1,8 +1,7 @@
-From 98003010d04455547f168095d906ac82aafae583 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 087fa1c1162384609e96ea7eacef41d5bd672479 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sun, 16 Aug 2026 04:43:41 +0000
-Subject: [PATCH 12/49] Draw fullscreen content into the display cutout by
- default
+Subject: [PATCH] Draw fullscreen content into the display cutout by default
 
 computeDisplayCutoutMode() honours an explicit viewport-fit of cover or
 contain, but falls through to LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT for the
@@ -47,6 +46,3 @@ index 0af875ee0b..13396eceff 100644
          return LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
      }
  
--- 
-2.34.1
-

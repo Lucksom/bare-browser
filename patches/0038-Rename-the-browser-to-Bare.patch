@@ -1,7 +1,7 @@
-From 5a874509b7f516c0b1d276ec26942a2b29f3182f Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From a65af6ca0bdde89938ebd20d8ce748c1b6f66c47 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Tue, 18 Aug 2026 20:21:16 +0000
-Subject: [PATCH 38/49] Rename the browser to Bare
+Subject: [PATCH] Rename the browser to Bare
 
 The launcher entry, the widget titles, the About page and the toolbar menu description
 all said Chrome or Chromium. They now say Bare.
@@ -88,6 +88,3 @@ index e90ebd1df6..a05beed294 100644
        </message>
        <message name="IDS_ACCESSIBILITY_LIST_MENU_BUTTON" desc="Content description for the button that shows option menu for a list item.">
          <ph name="NAME_OF_LIST_ITEM">%1$s<ex>Movie Title</ex></ph> Options
--- 
-2.34.1
-

@@ -1,7 +1,7 @@
-From 7dbc0fcd7f97f2baee44a49fa61fcc926933721e Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From ed2221823bab87887cb35b0e4472c1a22d80eff6 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Wed, 19 Aug 2026 07:36:56 +0000
-Subject: [PATCH] Look under overlays laid over images and video
+Subject: [PATCH] Find the media under a click-blocking overlay
 
 Sites routinely cover a picture or a video with an empty, fully transparent
 element, and register a contextmenu listener that does not suppress anything,
@@ -151,6 +151,3 @@ index c5c7991719..2e7f047400 100644
    HeapMojoAssociatedReceiver<mojom::blink::ContextMenuClient,
                               ContextMenuController>
        context_menu_client_receiver_{this, nullptr};
--- 
-2.34.1
-

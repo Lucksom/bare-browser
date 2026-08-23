@@ -1,7 +1,7 @@
-From a78ae398907f7481d4ce7fb772e1eb62092e50c5 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 622b3d1b1d4312a845891b9f48e70cd98ea7af70 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Thu, 20 Aug 2026 10:41:06 +0000
-Subject: Follow range requests back to the whole file, and offer the audio too
+Subject: [PATCH] Follow range requests back to the whole file
 
 Two things were wrong with what the previous change offered on a site that
 streams adaptively.
@@ -607,6 +607,3 @@ index e13e52f943..586e159117 100644
    // content::WebContentsObserver:
    void ResourceLoadComplete(
        content::RenderFrameHost* render_frame_host,
--- 
-2.34.1
-

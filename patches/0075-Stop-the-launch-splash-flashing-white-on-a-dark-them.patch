@@ -1,7 +1,7 @@
-From f44dc5b23984a2893891e87f40136df32153daba Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From e3b315023d2d35d14ffb1a202031d715c58a4f79 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Sat, 22 Aug 2026 08:30:01 +0000
-Subject: [PATCH 75/79] Stop the launch splash flashing white on a dark theme
+Subject: [PATCH] Stop the launch splash flashing white on a dark theme
 
 Every cold start with the browser set to Dark or Dark AMOLED painted a near
 white screen, #FBF9FC, and held it for the whole of startup before the dark

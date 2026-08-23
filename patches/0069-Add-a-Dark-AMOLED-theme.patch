@@ -1,7 +1,7 @@
-From 1c09f3c8250d311aebbdf3a70aabd7b7201b9d89 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From abc18da397078fa432cadc33f06120ad93c145bb Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Fri, 21 Aug 2026 07:53:03 +0000
-Subject: [PATCH 69/79] Add a Dark AMOLED theme alongside Light and Dark
+Subject: [PATCH] Add a Dark AMOLED theme
 
 Settings > Appearance > Theme offered System default, Light and Dark. On an
 AMOLED panel the dark theme still lights every pixel, because its surfaces sit

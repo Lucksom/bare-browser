@@ -1,7 +1,7 @@
-From 0c4150e4ab48e5af7b85caeb2b5c6c3d244f89d1 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 2d98476d98186b652cdae9b6e10ac902674f02c4 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Wed, 19 Aug 2026 03:01:42 +0000
-Subject: [PATCH 49/49] Add a Video autostart site setting
+Subject: [PATCH] Add a Video autostart site setting
 
 Settings, Site settings, Video autostart. Allowed keeps whatever autoplay behaviour the
 browser already had, so leaving it alone changes nothing. Blocked means nothing plays until
@@ -203,6 +203,3 @@ index 3c031ecb73..dfdb1e8c15 100644
    <message name="IDS_AUTO_DARK_WEB_CONTENT_TITLE" desc="Title of the permission auto darken web content [CHAR_LIMIT=32]">
      Dark theme for sites
    </message>
--- 
-2.34.1
-

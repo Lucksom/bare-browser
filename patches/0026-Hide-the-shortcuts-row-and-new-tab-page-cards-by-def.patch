@@ -1,8 +1,7 @@
-From 7c3353e6bad4e9f0ea1ac37f5b2cdf63f6e14953 Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 27530b5d0616eb937220b5a70d53ce1ceaaa5d2c Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Tue, 18 Aug 2026 03:38:04 +0000
-Subject: [PATCH 26/49] Hide the shortcuts row and new tab page cards by
- default
+Subject: [PATCH] Hide the shortcuts row and new tab page cards by default
 
 Both already have toggles under Customize new tab page, so this changes only
 which way they start. Nothing is removed and no new UI is added.
@@ -50,6 +49,3 @@ index 3d7e1537ee..65ffdd268e 100644
      }
  
      @VisibleForTesting
--- 
-2.34.1
-

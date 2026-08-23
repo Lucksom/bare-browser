@@ -1,8 +1,7 @@
-From f7632cab809d1cc7c403dba6337c328afc99832c Mon Sep 17 00:00:00 2001
-From: Chromium Extend <noreply@localhost>
+From 7bf65d686ba15dc88a64d01869f0f950837f9401 Mon Sep 17 00:00:00 2001
+From: Bare <git@barebrowser.org>
 Date: Tue, 18 Aug 2026 16:20:53 +0000
-Subject: [PATCH 33/49] Stop the browser painting white while a page loads on a
- dark theme
+Subject: [PATCH] Stop painting white while a page loads on a dark theme
 
 On a dark theme every navigation showed a white flash before the page appeared, which is
 glaring on an OLED screen at night. Screen recordings measured it at a peak brightness of
@@ -161,6 +160,3 @@ index 088951616f..84a9862fa0 100644
  #endif  // BUILDFLAG(IS_ANDROID)
  
  namespace features {
--- 
-2.34.1
-
