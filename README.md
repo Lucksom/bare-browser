@@ -20,7 +20,7 @@ powerful features like browser extensions and uBlock Origin. Bare also adds back
 playback, the ability to save media from sites that normally block it, support for choosing your
 preferred download manager, and much more.
 
-It is a patch series rather than a fork: 68 patches against one pinned revision of **Chromium
+It is a patch series rather than a fork: 79 patches against one pinned revision of **Chromium
 Desktop Android**, so what this repository holds is exactly the difference between stock Chromium
 and Bare, and nothing else.
 
@@ -29,7 +29,7 @@ Built and used on a Pixel 10 Pro XL. Not affiliated with Google or the Chromium 
 - **Base:** Chromium `153.0.7999.0` (commit `945b5115`)
 - **Target:** `is_desktop_android = true`, `target_cpu = "arm64"`
 - **Version:** `1.0.0-alpha.1`, versionCode `801000001`
-- **Size:** 68 patches, 4741 insertions across 194 files
+- **Size:** 79 patches, 5704 insertions across 221 files
 
 ## What you get
 
