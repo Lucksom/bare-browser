@@ -92,6 +92,7 @@ themselves are in [`patches/`](../patches); this is the summary of what each one
 | 0085 | Register twelve fewer components | Each registration announces the install to update.googleapis.com; the security-carrying ones are kept and listed |
 | 0086 | Stop the cloud-policy Firebase tokens | A fresh profile fetched two FCM tokens as durable identifiers, for enterprise invalidations this build can never receive |
 | 0087 | Fix two crashes from patch 0080 | Removing a preference row leaves the Java that looks it up holding null; Privacy and security and Safety check both crashed |
+| 0088 | Stop the update dot reappearing | Opening the row cleared it, but the next daily check saw the same release was still newer and put it straight back |
 
 Patches 0001 and 0002 are bug fixes that happen to be prerequisites. 0003 is a usability fix.
 0004 through 0010 are the de-Googling, as are 0014 through 0021. 0011 through 0013 fix
