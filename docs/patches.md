@@ -93,6 +93,9 @@ themselves are in [`patches/`](../patches); this is the summary of what each one
 | 0086 | Stop the cloud-policy Firebase tokens | A fresh profile fetched two FCM tokens as durable identifiers, for enterprise invalidations this build can never receive |
 | 0087 | Fix two crashes from patch 0080 | Removing a preference row leaves the Java that looks it up holding null; Privacy and security and Safety check both crashed |
 | 0088 | Stop the update dot reappearing | Opening the row cleared it, but the next daily check saw the same release was still newer and put it straight back |
+| 0089 | Send the update row to the release it found | It announced a version and then did nothing when tapped; the page for the found tag now opens in a tab, with no download |
+| 0090 | Stop settings search crashing | Patch 0080 removed the Safe Browsing row but left the search index rewriting its summary, which threw on Edit homepage and on Search settings |
+| 0091 | Stop the bottom bar reacting to a long press | A label repeated what the icon meant, and once that was cleared the gesture fell through and opened a tab or switched to incognito |
 
 Patches 0001 and 0002 are bug fixes that happen to be prerequisites. 0003 is a usability fix.
 0004 through 0010 are the de-Googling, as are 0014 through 0021. 0011 through 0013 fix
