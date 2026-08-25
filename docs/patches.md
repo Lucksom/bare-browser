@@ -99,6 +99,7 @@ themselves are in [`patches/`](../patches); this is the summary of what each one
 | 0092 | Make a second welcome a review, not a reset | The search engine, autofill provider and background media rows live in the profile, which is not up when the welcome is built, so a repeat showing drew defaults over settings the user had chosen and wrote them back on Start |
 | 0093 | Stop the startup ListAccounts to accounts.google.com | Two metrics-only services read the cookie jar while the profile was still being built, and reading it fetched from Google whenever the cached answer was stale, on every cold start |
 | 0094 | Drop the Safety Hub password check that can never run | The row reported that it could not check passwords in a Google Account and offered a Sign in to Chrome button, in a build with no browser sign-in, and its permanent failure held the whole page at a warning |
+| 0095 | Stop shipping the XR module when XR is switched off | chrome_module_descs never consulted the XR buildflags, so about 20 MB of AndroidX XR and ARCore native code was packaged in a build where enable_vr, enable_arcore, enable_openxr and enable_cardboard are all off |
 
 Patches 0001 and 0002 are bug fixes that happen to be prerequisites. 0003 is a usability fix.
 0004 through 0010 are the de-Googling, as are 0014 through 0021. 0011 through 0013 fix
