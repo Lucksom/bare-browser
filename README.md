@@ -20,7 +20,7 @@ powerful features like browser extensions and uBlock Origin. Bare also adds back
 playback, the ability to save media from sites that normally block it, support for choosing your
 preferred download manager, and much more.
 
-It is a patch series rather than a fork: 92 patches against one pinned revision of **Chromium
+It is a patch series rather than a fork: 93 patches against one pinned revision of **Chromium
 Desktop Android**, so what this repository holds is exactly the difference between stock Chromium
 and Bare, and nothing else.
 
@@ -29,7 +29,7 @@ Built and used on a Pixel 10 Pro XL. Not affiliated with Google or the Chromium 
 - **Base:** Chromium `153.0.7999.0` (commit `945b5115`)
 - **Target:** `is_desktop_android = true`, `target_cpu = "arm64"`
 - **Version:** `1.0.0-alpha.1`, versionCode `801000001`
-- **Size:** 92 patches, 6056 insertions across 233 files
+- **Size:** 93 patches, 6083 insertions across 235 files
 
 ## What you get
 
@@ -137,8 +137,14 @@ tapped.
   Chromium's cloud-policy invalidation projects and kept them in shared preferences as durable
   identifiers. Patches 0081 and 0086 removed both consumers; the token files are no longer
   created at all.
-- No omnibox lookup against `accounts.google.com`. Typing in the address bar used to reach GAIA
-  ListAccounts to decide whether to personalise suggestions.
+- No lookup against `accounts.google.com`, from the omnibox or at startup. Typing in the address
+  bar used to reach GAIA ListAccounts to decide whether to personalise suggestions. Separately, a
+  fresh profile used to POST to ListAccounts about a tenth of a second into every cold start,
+  before the welcome screen had been answered. Neither the omnibox nor the account reconcilor was
+  behind the startup one: two services asked for the cookie jar while the profile was still being
+  built, both only to report metrics, and reading the cookie jar fetched it from Google whenever
+  the cached answer was stale. Patch 0093 stops the read from reaching the network, so the answer
+  now comes from the cache. Visiting Google sites and signing in to them is unaffected.
 - No Safe Browsing traffic. There was never any: see below.
 
 Traffic from Android itself and from Google Play Services is separate from all of this and is not

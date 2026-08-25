@@ -97,6 +97,7 @@ themselves are in [`patches/`](../patches); this is the summary of what each one
 | 0090 | Stop settings search crashing | Patch 0080 removed the Safe Browsing row but left the search index rewriting its summary, which threw on Edit homepage and on Search settings |
 | 0091 | Stop the bottom bar reacting to a long press | A label repeated what the icon meant, and once that was cleared the gesture fell through and opened a tab or switched to incognito |
 | 0092 | Make a second welcome a review, not a reset | The search engine, autofill provider and background media rows live in the profile, which is not up when the welcome is built, so a repeat showing drew defaults over settings the user had chosen and wrote them back on Start |
+| 0093 | Stop the startup ListAccounts to accounts.google.com | Two metrics-only services read the cookie jar while the profile was still being built, and reading it fetched from Google whenever the cached answer was stale, on every cold start |
 
 Patches 0001 and 0002 are bug fixes that happen to be prerequisites. 0003 is a usability fix.
 0004 through 0010 are the de-Googling, as are 0014 through 0021. 0011 through 0013 fix
