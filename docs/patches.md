@@ -101,6 +101,7 @@ themselves are in [`patches/`](../patches); this is the summary of what each one
 | 0094 | Drop the Safety Hub password check that can never run | The row reported that it could not check passwords in a Google Account and offered a Sign in to Chrome button, in a build with no browser sign-in, and its permanent failure held the whole page at a warning |
 | 0095 | Stop shipping the XR module when XR is switched off | chrome_module_descs never consulted the XR buildflags, so about 20 MB of AndroidX XR and ARCore native code was packaged in a build where enable_vr, enable_arcore, enable_openxr and enable_cardboard are all off |
 | 0096 | Keep the Start circle off the welcome footer | The column needed more height than a Pixel 3 has, so the spacer collapsed and the circle ran past the padding reserved for the footer, which was pinned to the frame and took no part in the layout |
+| 0097 | Give incognito its extension background pages back | The incognito ProcessManager waited for an embedder callback that Android does not have, so a split-mode extension allowed in incognito never got a background page and never filtered |
 
 Patches 0001 and 0002 are bug fixes that happen to be prerequisites. 0003 is a usability fix.
 0004 through 0010 are the de-Googling, as are 0014 through 0021. 0011 through 0013 fix
