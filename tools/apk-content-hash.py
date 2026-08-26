@@ -1,18 +1,8 @@
 #!/usr/bin/env python3
-"""Hashes an APK's contents, ignoring the signature.
+"""Compare APK contents while ignoring signing metadata.
 
-Bare is signed with a private key, so nobody else can reproduce the signed file
-byte for byte: they cannot produce the signature. Everything the build actually
-produced is still reproducible, and this is what lets you check that. It hashes
-every entry except the signature block, so two APKs built from the same source
-agree here whoever signed them.
-
-    tools/apk-content-hash.py Bare-1.0.0-alpha.1.apk out/Optimized/apks/ChromePublic.apk
-
-Matching output means the two builds are identical in everything but who signed
-them. To check who signed one, use apksigner:
-
-    apksigner verify --print-certs Bare-1.0.0-alpha.1.apk
+Usage:
+    tools/apk-content-hash.py app1.apk app2.apk
 """
 
 import hashlib

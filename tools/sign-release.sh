@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 #
-# Signs a built APK with Bare's release key.
+# Sign a Bare Browser release APK.
 #
-# The key lives outside this repo and the password lives in the macOS login
-# keychain, so neither is ever written to a file the build can see, passed into
-# the container, or recorded in a shell history. The password is read at the
-# moment of signing and handed to apksigner through the environment.
-#
+# Usage:
 #   tools/sign-release.sh path/to/ChromePublic.apk [output.apk]
 #
 set -euo pipefail
@@ -36,8 +32,8 @@ echo "signing $(basename "$IN")  ->  $(basename "$OUT")   [Bare $VERSION_NAME]"
 cp "$IN" "$OUT"
 
 # minSdk is 29, so the v1 JAR signature buys nothing and only adds size. v3
-# carries the rotation record, which is what would let this key be replaced one
-# day without orphaning every install.
+# carries the rotation record, letting this key be replaced one day without
+# orphaning every install.
 BARE_KS_PW="$(security find-generic-password -a "$KC_ACCOUNT" -s "$KC_SERVICE" -w)" \
   "$APKSIGNER" sign \
     --ks "$KEYSTORE" \

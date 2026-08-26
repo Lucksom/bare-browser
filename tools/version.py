@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""Bare's version numbers, derived from the VERSION file at the repo root.
-
-Chromium derives its Android versionCode from its own build number, so every
-Bare release built on the same Chromium would otherwise carry an identical one.
-Android only compares versionCode when deciding whether an APK may replace
-another, so identical numbers mean no update can ever be recognised. Bare
-therefore owns its own.
-
-The base sits above the highest number the old Chromium Extend line ever
-shipped (799900074), because Android refuses a downgrade and anything lower
-would be unable to replace an existing install.
-"""
+"""Version helpers for Bare Browser Android builds."""
 
 import os
 import sys
