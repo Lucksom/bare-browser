@@ -103,6 +103,7 @@ themselves are in [`patches/`](../patches); this is the summary of what each one
 | 0096 | Keep the Start circle off the welcome footer | The column needed more height than a Pixel 3 has, so the spacer collapsed and the circle ran past the padding reserved for the footer, which was pinned to the frame and took no part in the layout |
 | 0097 | Give incognito its extension background pages back | The incognito ProcessManager waited for an embedder callback that Android does not have, so a split-mode extension allowed in incognito never got a background page and never filtered |
 | 0098 | Let the bundled blocker work in incognito without being asked | uBlock Origin starts with incognito access and nothing else does; the default is applied once, using the same preference the chrome://extensions toggle writes, so turning it off keeps it off |
+| 0099 | Let Android retry lower GLES versions instead of losing the GPU | Upstream answers yes to a SwiftShader fallback Android never builds, which switches off the ES-version retry, so a driver that refuses an ES3 context left the GPU process dead instead of walking down to 3.0 or 2.0 |
 
 Patches 0001 and 0002 are bug fixes that happen to be prerequisites. 0003 is a usability fix.
 0004 through 0010 are the de-Googling, as are 0014 through 0021. 0011 through 0013 fix

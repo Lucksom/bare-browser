@@ -20,7 +20,7 @@ powerful features like browser extensions and uBlock Origin. Bare also adds back
 playback, the ability to save media from sites that normally block it, support for choosing your
 preferred download manager, and much more.
 
-It is a patch series rather than a fork: 98 patches against one pinned revision of **Chromium
+It is a patch series rather than a fork: 99 patches against one pinned revision of **Chromium
 Desktop Android**, so what this repository holds is exactly the difference between stock Chromium
 and Bare, and nothing else.
 
@@ -28,8 +28,8 @@ Built and used on a Pixel 10 Pro XL. Not affiliated with Google or the Chromium 
 
 - **Base:** Chromium `153.0.7999.0` (commit `945b5115`)
 - **Target:** `is_desktop_android = true`, `target_cpu = "arm64"`
-- **Version:** `1.0.0-alpha.1`, versionCode `801000001`
-- **Size:** 98 patches, 6253 insertions across 237 files
+- **Version:** `1.0.0-alpha.1`, versionCode `801000025` (arm64) / `801000020` (32-bit arm)
+- **Size:** 99 patches, 6262 insertions across 239 files
 
 ## What you get
 
@@ -185,7 +185,7 @@ from a macOS bind mount is slow and unreliable; only small files cross to the ho
 ```bash
 cp -R patches exchange/
 cp third_party/ublock_origin/uBlockOrigin-1.73.0.crx exchange/
-tools/version.py gn > exchange/version-args.gn
+tools/version.py gn arm64 > exchange/version-args.gn
 ```
 
 **3. Fetch Chromium.** Inside the container (`./builder.sh shell`). depot_tools is on the PATH
@@ -246,12 +246,16 @@ enable_cardboard = false
 enable_openxr = false
 
 chrome_public_manifest_package = "org.barebrowser"
-android_override_version_code = "801000001"
+android_override_version_code = "801000025"
 android_override_version_name = "1.0.0-alpha.1"
 ```
 
-The last two lines are what `tools/version.py gn` emits, and they matter: they are written into
+The last two lines are what `tools/version.py gn arm64` emits, and they matter: they are written into
 the manifest, so a build without them will not match the release.
+
+The 32-bit build differs in exactly three lines: `target_cpu = "arm"`, the version code
+`801000020` that `tools/version.py gn arm` emits, and `clang_use_default_sample_profile = false`,
+which stops GN demanding an AFDO profile this checkout never syncs.
 
 ```bash
 mkdir -p out/Bare

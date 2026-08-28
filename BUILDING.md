@@ -83,7 +83,7 @@ by an APK anyone can build.
     tools/sign-release.sh out/PixelFold/apks/ChromePublic.apk Bare-1.0.0-alpha.1.apk
 
 The key sits outside this repo and its password is in the macOS login keychain,
-read only at the moment of signing. Neither is ever written where the build or
+read only when it signs. Neither is ever written where the build or
 the container can see it, and neither belongs in this repository. The signing
 certificate's SHA-256 is published with each release so a download can be
 checked with `apksigner verify --print-certs`.
