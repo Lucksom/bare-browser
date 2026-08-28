@@ -28,7 +28,7 @@ Built and used on a Pixel 10 Pro XL. Not affiliated with Google or the Chromium 
 
 - **Base:** Chromium `153.0.7999.0` (commit `945b5115`)
 - **Target:** `is_desktop_android = true`, `target_cpu = "arm64"`
-- **Version:** `1.0.0-alpha.1`, versionCode `801000025` (arm64) / `801000020` (32-bit arm)
+- **Version:** `1.0.0-alpha.2`, versionCode `801000035` (arm64) / `801000030` (32-bit arm)
 - **Size:** 99 patches, 6262 insertions across 239 files
 
 ## What you get
@@ -246,8 +246,8 @@ enable_cardboard = false
 enable_openxr = false
 
 chrome_public_manifest_package = "org.barebrowser"
-android_override_version_code = "801000025"
-android_override_version_name = "1.0.0-alpha.1"
+android_override_version_code = "801000035"
+android_override_version_name = "1.0.0-alpha.2"
 ```
 
 The last two lines are what `tools/version.py gn arm64` emits, and they matter: they are written into
