@@ -44,20 +44,29 @@ See `third_party/ublock_origin/README.md` for provenance, checksum and licence.
 Bare's version lives in `VERSION` at the repo root and is independent of the
 Chromium underneath it. `tools/version.py` derives everything else from it:
 
-    tools/version.py          # versionName, versionCode and tag
-    tools/version.py gn       # the two gn args to append to args.gn
+    tools/version.py                # versionName, both versionCodes and tag
+    tools/version.py gn arm64       # the two gn args to append to args.gn
+    tools/version.py gn arm         # the same, for the 32-bit build
 
 Chromium derives its Android versionCode from its own build number, so two Bare
 releases built on the same Chromium would carry the same one. Android compares
 only versionCode when deciding whether an APK may replace another, so that
 would make updates unrecognisable. Bare owns its own number instead:
 
-    versionCode = 800000000 + MAJOR*1000000 + MINOR*10000 + PATCH*100 + BUILD
+    versionCode = 800000000 + MAJOR*1000000 + MINOR*10000 + PATCH*100 + BUILD*10 + ABI
+
+The last digit is the ABI, using Chromium's own values: 0 for arm, 5 for
+arm64. That makes the 64-bit APK the higher number of any release, so Android
+refuses to replace it with the 32-bit one, and it gives the two APKs the
+distinct codes that Play and F-Droid require. `code` and `gn` therefore take
+the ABI as an argument; there is no default, so no number can be emitted
+without saying which APK it belongs to.
 
 The base clears 799900074, the highest the old Chromium Extend line shipped.
 Android refuses a downgrade, so anything below that could not replace an
 existing install. Bump `BUILD` for every published artifact, including a rebuild
-of the same version.
+of the same version. It has a single digit now; `version.py` refuses a tenth
+rebuild rather than letting it collide with the next PATCH level.
 
 Both values reach the build through `android_override_version_code` and
 `android_override_version_name`, which are plain `declare_args` in

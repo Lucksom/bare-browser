@@ -3,6 +3,10 @@
 # BUILD increments on every published artifact, including two builds of the
 # same version. It is what makes versionCode move, and versionCode is the only
 # thing Android looks at when deciding whether one APK may replace another.
+#
+# BUILD has a single digit: the ones place of the versionCode now carries the
+# ABI (arm 0, arm64 5, Chromium's own digits), so the two APKs of a release
+# order correctly and a 32-bit build can never replace a 64-bit install.
 MAJOR=1
 MINOR=0
 PATCH=0
