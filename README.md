@@ -439,6 +439,12 @@ inside it, the corresponding source is the upstream release, and provenance and 
 aggregation; uBlock Origin remains under the GPL and Bare's licence does not touch it. Bare is
 not affiliated with or endorsed by the uBlock Origin project.
 
+**[Titanium](https://github.com/jqssun/android-titanium-browser)**, by jqssun, is built from the
+same `is_desktop_android` target and ships to phones, which makes it a working reference for the
+places Chromium still treats that target as a desktop. Patch 0078 came out of reading its
+`patch.sh`, which showed which two files gate the omnibox verbatim match. The edits here came out
+different: Titanium switches both off, Bare keeps a device check where the code allows one.
+
 **[Cromite](https://github.com/uazo/cromite)** and
 **[ungoogled-chromium](https://github.com/ungoogled-software/ungoogled-chromium)** were used as
 reference throughout. Finding every call site that reaches a Google service is the hard part of
