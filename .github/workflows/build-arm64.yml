@@ -1,12 +1,12 @@
 name: Build Bare Browser APK
 
 on:
-  workflow_dispatch: # Allows manual run with one tap on GitHub
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 360 # Max allowed runtime
+    timeout-minutes: 360
 
     steps:
       - name: Checkout repository
@@ -77,7 +77,14 @@ jobs:
             git apply --ignore-whitespace --ignore-space-change "$p" || git apply --reject "$p" || true
           done
 
-      # 6. CONFIGURE LEAN GN ARGS
+      # 6. DOWNLOAD UBLOCK ORIGIN EXTENSION ASSET
+      - name: Download uBlock Origin CRX
+        run: |
+          mkdir -p /home/runner/chromium/src/chrome/browser/resources/bare
+          curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
+            https://github.com/gorhill/uBlock/releases/download/1.62.0/uBlock0_1.62.0.chromium.signed.crx
+
+      # 7. CONFIGURE LEAN GN ARGS
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -98,13 +105,13 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Default
 
-      # 7. COMPILE THE ARM64 APK
+      # 8. COMPILE THE ARM64 APK
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
           /home/runner/depot_tools/autoninja -C out/Default -j 2 chrome_public_apk
 
-      # 8. UPLOAD APK AS ARTIFACT
+      # 9. UPLOAD APK AS ARTIFACT
       - name: Upload Finished APK
         uses: actions/upload-artifact@v4
         with:
