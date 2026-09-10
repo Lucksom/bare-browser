@@ -183,3 +183,9 @@ for both a 16:9 video and one taller than the viewport.
 shows DuckDuckGo and a query resolves to `duckduckgo.com`, and the browser opens straight to the
 new tab page with no first-run screen, including after a force stop and relaunch. If the Terms
 of Service acceptance did not persist, that screen would come back.
+### 100. Restore Classic Vertical Stack Tab Switcher
+- Adds Tab Switcher preference in Settings > Tabs.
+- Options:
+  1. Tab group (Default modern grid with groups).
+  2. Vertical stack tab switcher (Pre-Chromium 88 3D overlapping stacked cards, single-tab style without groups).
+- Unwinds TabGroupModelFilter, hides bottom tab group strip, and restores dual Normal / Incognito decks.
