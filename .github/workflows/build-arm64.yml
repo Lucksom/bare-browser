@@ -1,79 +1,86 @@
-name: Build Bare Browser ARM64 APK
+name: Build Bare Browser APK
 
 on:
-  workflow_dispatch:
-    inputs:
-      target_branch:
-        description: 'Branch to build'
-        required: true
-        default: 'main'
+  workflow_dispatch: # Allows manual run with one tap on GitHub
 
 jobs:
-  build-barebrowser-arm64:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360 # Max allowed runtime
 
     steps:
-      - name: Checkout Your Fork
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.target_branch }}
-          fetch-depth: 1
 
-      # Unlocks ~55GB+ free disk space on GitHub's free runner at $0
-      - name: Maximize Free Runner Disk Space
-        uses: easimon/maximize-build-space@v10
-        with:
-          root-reserve-mb: 2048
-          swap-size-mb: 1024
-          remove-dotnet: 'true'
-          remove-android: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-          remove-docker-images: 'true'
-
-      - name: Verify Available Disk Space
+      # 1. MAXIMIZE DISK SPACE (Frees ~50+ GB)
+      - name: Maximize Runner Disk Space
         run: |
-          echo "Available disk space:"
-          df -h
+          echo "Initial Space:"
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          sudo docker image prune --all --force || true
+          sudo swapoff -a || true
+          sudo rm -f /mnt/swapfile || true
+          sudo apt-get clean
+          echo "Maximized Space:"
+          df -h /
 
+      # 2. INSTALL SYSTEM PREREQUISITES
       - name: Install Build Prerequisites
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git curl python3 python3-pip build-essential openjdk-17-jdk ninja-build ccache
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq git curl python3 build-essential openjdk-17-jdk ninja-build
 
-      # Fixed: Clones and bootstraps depot_tools so python3_bin_reldir.txt exists
-      - name: Install and Bootstrap Google depot_tools
+      # 3. SETUP DEPOT TOOLS
+      - name: Setup Depot Tools
         run: |
-          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git $HOME/depot_tools
-          echo "$HOME/depot_tools" >> $GITHUB_PATH
-          export PATH="$HOME/depot_tools:$PATH"
-          # Run gclient once to initialize depot_tools and create python3_bin_reldir.txt
-          gclient || true
+          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /home/runner/depot_tools
+          echo "/home/runner/depot_tools" >> $GITHUB_PATH
 
-      - name: Shallow Fetch Chromium Base
+      # 4. FETCH SHALLOW CHROMIUM ANDROID BASE
+      - name: Fetch Shallow Chromium Android
         run: |
-          export PATH="$HOME/depot_tools:$PATH"
-          mkdir -p /home/runner/work/bare-build && cd /home/runner/work/bare-build
-          fetch --nohooks --no-history android
+          mkdir -p /home/runner/chromium
+          cd /home/runner/chromium
+
+          cat << 'EOF' > .gclient
+          solutions = [
+            {
+              "name": "src",
+              "url": "https://chromium.googlesource.com/chromium/src.git",
+              "deps_file": "DEPS",
+              "managed": False,
+              "custom_deps": {},
+              "custom_vars": {
+                "checkout_android": True,
+                "checkout_android_prebuilts_build_tools": True,
+                "checkout_pgo_profiles": False,
+              },
+            },
+          ]
+          target_os = ["android"]
+          EOF
+
+          git config --global pack.threads 1
+          git config --global pack.windowMemory 256m
+
+          /home/runner/depot_tools/gclient sync --no-history --shallow --nohooks -j2
           cd src
-          gclient sync -D --no-history -j2
+          /home/runner/depot_tools/gclient runhooks
 
-      - name: Apply Bare Browser Patches (including Vertical Stack)
+      # 5. APPLY ALL PATCHES (INCLUDING VERTICAL STACK)
+      - name: Apply Patches
         run: |
-          cd /home/runner/work/bare-build/src
-          echo "Applying Bare Browser patches..."
-          if [ -d "$GITHUB_WORKSPACE/patches" ]; then
-            for patch in $(find "$GITHUB_WORKSPACE/patches" -type f -name "*.patch" | sort); do
-              echo "Applying $patch..."
-              git apply --ignore-whitespace --ignore-space-change "$patch" || git apply --reject "$patch"
-            done
-          fi
-          git status --short
+          cd /home/runner/chromium/src
+          for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" | sort); do
+            echo "Applying $p..."
+            git apply --ignore-whitespace --ignore-space-change "$p" || git apply --reject "$p" || true
+          done
 
-      - name: Configure Lean GN Args for ARM64
+      # 6. CONFIGURE LEAN GN ARGS
+      - name: Configure GN Args
         run: |
-          cd /home/runner/work/bare-build/src
-          export PATH="$HOME/depot_tools:$PATH"
+          cd /home/runner/chromium/src
           mkdir -p out/Default
           cat << 'EOF' > out/Default/args.gn
           target_os = "android"
@@ -88,20 +95,19 @@ jobs:
           ffmpeg_branding = "Chrome"
           proprietary_codecs = true
           enable_nacl = false
-          use_debug_fission = false
           EOF
-          gn gen out/Default
+          /home/runner/depot_tools/gn gen out/Default
 
-      - name: Compile Bare Browser APK
+      # 7. COMPILE THE ARM64 APK
+      - name: Compile APK
         run: |
-          cd /home/runner/work/bare-build/src
-          export PATH="$HOME/depot_tools:$PATH"
-          # -j 2 keeps RAM usage safely under the free runner's 7GB limit
-          autoninja -C out/Default -j 2 chrome_public_apk
+          cd /home/runner/chromium/src
+          /home/runner/depot_tools/autoninja -C out/Default -j 2 chrome_public_apk
 
-      - name: Upload APK
+      # 8. UPLOAD APK AS ARTIFACT
+      - name: Upload Finished APK
         uses: actions/upload-artifact@v4
         with:
-          name: BareBrowser-arm64-VerticalStack-APK
-          path: /home/runner/work/bare-build/src/out/Default/apks/ChromePublic.apk
+          name: BareBrowser-VerticalStack-ARM64
+          path: /home/runner/chromium/src/out/Default/apks/ChromePublic.apk
           if-no-files-found: error
