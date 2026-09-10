@@ -1,4 +1,4 @@
-name: Build Bare Browser APK (ARM64)
+name: Build Bare Browser APK (ARM64 with Resume Cache)
 
 on:
   workflow_dispatch:
@@ -26,7 +26,6 @@ jobs:
           sudo apt-get clean
           sudo apt-get autoremove -y -qq
 
-          # Safely setup 10GB swap to prevent compiler OOM
           sudo swapoff -a || true
           sudo rm -f /swapfile /mnt/swapfile || true
           sudo fallocate -l 10G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=10240
@@ -42,7 +41,7 @@ jobs:
       - name: Install Build Prerequisites
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq git curl python3 build-essential openjdk-17-jdk ninja-build
+          sudo apt-get install -y -qq git curl python3 build-essential openjdk-17-jdk ninja-build zstd
 
       # 3. SETUP DEPOT TOOLS
       - name: Setup Depot Tools
@@ -92,7 +91,7 @@ jobs:
           cd src
           /home/runner/depot_tools/gclient runhooks -j 4
 
-      # 5. APPLY ALL PATCHES (INCLUDING VERTICAL STACK SWITCHER)
+      # 5. APPLY ALL PATCHES & CLEAN UP .rej FILES
       - name: Apply Patches
         run: |
           cd /home/runner/chromium/src
@@ -100,6 +99,13 @@ jobs:
             echo "Applying patch: $p"
             git apply --ignore-whitespace --ignore-space-change "$p" || git apply --reject "$p" || true
           done
+
+          echo "Removing any patch rejection files so resources validate..."
+          find chrome/ -name "*.rej" -delete
+          find chrome/ -name "*.orig" -delete
+          find . -name "*.rej" -delete
+          find . -name "*.orig" -delete
+          echo "Patch cleanup complete."
 
       # 6. DOWNLOAD UBLOCK ORIGIN CRX
       - name: Download uBlock Origin CRX
@@ -109,7 +115,7 @@ jobs:
             https://github.com/gorhill/uBlock/releases/download/1.74.1b5/uBlock0_1.74.1b5.chromium.crx
           echo "uBlock Origin CRX ready ($(wc -c < /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx) bytes)"
 
-      # 7. CONFIGURE OFFICIAL CANONICAL ARM64 GN SETTINGS
+      # 7. CONFIGURE OFFICIAL ARM64 GN SETTINGS
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -130,14 +136,32 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Default
 
-      # 8. COMPILE THE ARM64 APK (Balanced concurrency with Swap protection)
+      # 8. RESTORE PREVIOUS BUILD PROGRESS IF CACHED
+      - name: Restore Build Cache
+        uses: actions/cache/restore@v4
+        id: build-cache
+        with:
+          path: /home/runner/chromium/src/out/Default/obj
+          key: chromium-arm64-obj-${{ github.run_id }}
+          restore-keys: |
+            chromium-arm64-obj-
+
+      # 9. COMPILE THE ARM64 APK (Resumes from where it left off)
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
           /home/runner/depot_tools/autoninja -C out/Default -j 3 chrome_public_apk
 
-      # 8.5 DUMP FAILURE LOGS IF NEEDED
+      # 9.5 SAVE PROGRESS CACHE IF COMPILATION EVER FAILS
+      - name: Save Build Progress Cache on Failure
+        if: failure()
+        uses: actions/cache/save@v4
+        with:
+          path: /home/runner/chromium/src/out/Default/obj
+          key: chromium-arm64-obj-${{ github.run_id }}
+
+      # 9.6 DUMP FAILURE LOGS IF NEEDED
       - name: Print Detailed Failure Logs
         if: failure()
         run: |
@@ -151,7 +175,7 @@ jobs:
             tail -n 120 out/Default/siso_output
           fi
 
-      # 9. UPLOAD FINISHED ARM64 APK
+      # 10. UPLOAD FINISHED ARM64 APK
       - name: Upload Finished APK
         uses: actions/upload-artifact@v4
         with:
