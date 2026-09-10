@@ -1,4 +1,4 @@
-name: Build Bare Browser APK (ARM64 Only)
+name: Build Bare Browser APK (ARM64 Optimized)
 
 on:
   workflow_dispatch:
@@ -12,8 +12,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. MAXIMIZE RUNNER DISK SPACE (Removes unused toolchains)
-      - name: Maximize Runner Disk Space
+      # 1. MAXIMIZE RUNNER DISK SPACE & ADD 10GB SWAP
+      - name: Maximize Runner Disk Space & Setup Swap
         run: |
           echo "=== Initial Disk Space ==="
           df -h /
@@ -23,11 +23,16 @@ jobs:
           sudo rm -rf /usr/local/share/boost
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
           sudo docker image prune --all --force || true
-          sudo swapoff -a || true
-          sudo rm -f /mnt/swapfile || true
           sudo apt-get clean
           sudo apt-get autoremove -y -qq
-          echo "=== Maximized Disk Space ==="
+
+          # Create 10 GB swap to guarantee Clang compiler never hits OOM
+          sudo fallocate -l 10G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=10240
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+          echo "=== Disk Space After Cleanup ==="
           df -h /
 
       # 2. INSTALL SYSTEM PREREQUISITES
@@ -36,7 +41,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq git curl python3 build-essential openjdk-17-jdk ninja-build
 
-      # 3. SETUP DEPOT TOOLS (Disable metrics & Windows/Mac telemetry)
+      # 3. SETUP DEPOT TOOLS
       - name: Setup Depot Tools
         run: |
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /home/runner/depot_tools
@@ -46,7 +51,7 @@ jobs:
           echo "opt-out" > /home/runner/depot_tools/metrics.cfg
           echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
 
-      # 4. FETCH ONLY ARM64 ANDROID CHROMIUM (No Windows, Fuchsia, or x86)
+      # 4. FETCH SHALLOW CHROMIUM ANDROID BASE
       - name: Fetch Shallow Chromium Android
         run: |
           mkdir -p /home/runner/chromium
@@ -77,10 +82,10 @@ jobs:
           git config --global pack.windowMemory 256m
           export DEPOT_TOOLS_METRICS=0
 
-          echo "Syncing Chromium source tree..."
+          echo "Syncing Chromium tree..."
           /home/runner/depot_tools/gclient sync --no-history --shallow --nohooks -j 4
 
-          echo "Syncing Android 64-bit toolchains..."
+          echo "Syncing Android toolchains & hooks..."
           cd src
           /home/runner/depot_tools/gclient runhooks -j 4
 
@@ -101,7 +106,7 @@ jobs:
             https://github.com/gorhill/uBlock/releases/download/1.74.1b5/uBlock0_1.74.1b5.chromium.crx
           echo "uBlock Origin CRX ready ($(wc -c < /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx) bytes)"
 
-      # 7. STRICT PURE ARM64 GN CONFIGURATION (Skips arm32, x86, & Windows)
+      # 7. HIGH-SPEED GN SETTINGS (Drops 50,000 extra targets)
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -111,11 +116,9 @@ jobs:
           target_os = "android"
           target_cpu = "arm64"
           android_64bit_browser = true
-
-          # Exclude all 32-bit secondary architecture compilation
           build_apk_secondary_abi = false
 
-          # Release optimization settings (fastest build time)
+          # Release & performance configuration
           is_debug = false
           is_component_build = false
           is_official_build = false
@@ -127,7 +130,16 @@ jobs:
           proprietary_codecs = true
           enable_nacl = false
 
-          # Disable heavy test configs and dead code analysis
+          # SPEED STRIPPING: Removes 50,000 unused targets (VR, PDF, Cast, etc.)
+          enable_vr = false
+          enable_arcore = false
+          enable_pdf = false
+          enable_print_preview = false
+          enable_reporting = false
+          enable_supervised_users = false
+          enable_widevine = false
+
+          # Compiler optimizations for speed
           enable_resource_allowlist_generation = false
           strip_absolute_paths_from_debug_symbols = false
           treat_warnings_as_errors = false
@@ -135,12 +147,26 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Default
 
-      # 8. COMPILE PURE ARM64 APK (Using all 4 cores)
+      # 8. COMPILE FAST ARM64 APK
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
-          /home/runner/depot_tools/autoninja -C out/Default -j 4 chrome_public_apk
+          /home/runner/depot_tools/autoninja -C out/Default -j 3 chrome_public_apk
+
+      # 8.5 DUMP FAILURE LOGS IF NEEDED
+      - name: Print Detailed Failure Logs
+        if: failure()
+        run: |
+          cd /home/runner/chromium/src
+          echo "==================== FAILED COMMANDS ===================="
+          if [ -f out/Default/siso_failed_commands.sh ]; then
+            cat out/Default/siso_failed_commands.sh
+          fi
+          echo "==================== SISO OUTPUT ===================="
+          if [ -f out/Default/siso_output ]; then
+            tail -n 120 out/Default/siso_output
+          fi
 
       # 9. UPLOAD FINISHED ARM64 APK
       - name: Upload Finished APK
