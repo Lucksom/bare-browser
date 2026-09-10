@@ -78,7 +78,7 @@ jobs:
 
           echo "Syncing Chromium source tree..."
           /home/runner/depot_tools/gclient sync --no-history --shallow --nohooks -j 4
-          
+
           echo "Syncing Android toolchains & hooks..."
           cd src
           /home/runner/depot_tools/gclient runhooks -j 4
@@ -92,12 +92,13 @@ jobs:
             git apply --ignore-whitespace --ignore-space-change "$p" || git apply --reject "$p" || true
           done
 
-      # 6. DOWNLOAD UBLOCK ORIGIN CRX (Required by Bare Browser patch 0059)
+      # 6. DOWNLOAD UBLOCK ORIGIN CRX (Using latest 1.74.1b5 release)
       - name: Download uBlock Origin CRX
         run: |
           mkdir -p /home/runner/chromium/src/chrome/browser/resources/bare
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
-            https://github.com/gorhill/uBlock/releases/download/1.62.0/uBlock0_1.62.0.chromium.signed.crx
+            https://github.com/gorhill/uBlock/releases/download/1.74.1b5/uBlock0_1.74.1b5.chromium.crx
+          echo "uBlock Origin CRX downloaded successfully! File size: $(wc -c < /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx) bytes"
 
       # 7. CONFIGURE LEAN GN BUILD SETTINGS
       - name: Configure GN Args
