@@ -1,0 +1,103 @@
+name: Build Bare Browser ARM64 APK with Vertical Stack (100% Free)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: 'Branch to build'
+        required: true
+        default: 'main'
+
+jobs:
+  build-barebrowser-arm64:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Your Fork
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_branch }}
+          fetch-depth: 1
+
+      # Unlocks ~55GB+ free disk space on GitHub's free runner at $0
+      - name: Maximize Free Runner Disk Space
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: 2048
+          swap-size-mb: 1024
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
+
+      - name: Verify Available Disk Space
+        run: |
+          echo "Available disk space:"
+          df -h
+
+      - name: Install Build Prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git curl python3 build-essential openjdk-17-jdk ninja-build ccache
+
+      - name: Install Google depot_tools
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git $HOME/depot_tools
+          echo "$HOME/depot_tools" >> $GITHUB_PATH
+
+      - name: Shallow Fetch Chromium Base
+        run: |
+          export PATH="$HOME/depot_tools:$PATH"
+          mkdir -p /home/runner/work/bare-build && cd /home/runner/work/bare-build
+          fetch --nohooks --no-history android
+          cd src
+          gclient sync -D --no-history -j2
+
+      - name: Apply Bare Browser Patches (including Vertical Stack)
+        run: |
+          cd /home/runner/work/bare-build/src
+          echo "Applying patch series..."
+          if [ -d "$GITHUB_WORKSPACE/patches" ]; then
+            for patch in $(find "$GITHUB_WORKSPACE/patches" -type f -name "*.patch" | sort); do
+              echo "Applying $patch..."
+              git apply --ignore-whitespace --ignore-space-change "$patch" || git apply --reject "$patch"
+            done
+          fi
+          git status --short
+
+      - name: Configure Lean GN Args for ARM64
+        run: |
+          cd /home/runner/work/bare-build/src
+          export PATH="$HOME/depot_tools:$PATH"
+          mkdir -p out/Default
+          cat << 'EOF' > out/Default/args.gn
+          target_os = "android"
+          target_cpu = "arm64"
+          is_debug = false
+          is_component_build = false
+          is_official_build = false
+          symbol_level = 0
+          blink_symbol_level = 0
+          v8_symbol_level = 0
+          dcheck_always_on = false
+          ffmpeg_branding = "Chrome"
+          proprietary_codecs = true
+          enable_nacl = false
+          use_debug_fission = false
+          EOF
+          gn gen out/Default
+
+      - name: Compile Bare Browser APK
+        run: |
+          cd /home/runner/work/bare-build/src
+          export PATH="$HOME/depot_tools:$PATH"
+          # -j 2 keeps RAM usage safely under the free runner's 7GB limit
+          autoninja -C out/Default -j 2 chrome_public_apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BareBrowser-arm64-VerticalStack-APK
+          path: /home/runner/work/bare-build/src/out/Default/apks/ChromePublic.apk
+          if-no-files-found: error
