@@ -12,7 +12,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. MAXIMIZE RUNNER DISK SPACE & ADD 10GB SWAP
+      # 1. MAXIMIZE RUNNER DISK SPACE & SAFE SWAP SETUP
       - name: Maximize Runner Disk Space & Setup Swap
         run: |
           echo "=== Initial Disk Space ==="
@@ -26,12 +26,17 @@ jobs:
           sudo apt-get clean
           sudo apt-get autoremove -y -qq
 
-          # Create 10 GB swap to guarantee Clang compiler never hits OOM
-          sudo fallocate -l 10G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=10240
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
+          # Safely turn off any active swap first so there is never a "Text file busy" error
+          sudo swapoff -a || true
+          sudo rm -f /swapfile /mnt/swapfile || true
+
+          # Create fresh 10 GB swap
+          sudo fallocate -l 10G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=10240
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
           free -h
+
           echo "=== Disk Space After Cleanup ==="
           df -h /
 
@@ -112,13 +117,11 @@ jobs:
           cd /home/runner/chromium/src
           mkdir -p out/Default
           cat << 'EOF' > out/Default/args.gn
-          # Target only 64-bit ARM Android
           target_os = "android"
           target_cpu = "arm64"
           android_64bit_browser = true
           build_apk_secondary_abi = false
 
-          # Release & performance configuration
           is_debug = false
           is_component_build = false
           is_official_build = false
@@ -130,7 +133,6 @@ jobs:
           proprietary_codecs = true
           enable_nacl = false
 
-          # SPEED STRIPPING: Removes 50,000 unused targets (VR, PDF, Cast, etc.)
           enable_vr = false
           enable_arcore = false
           enable_pdf = false
@@ -139,7 +141,6 @@ jobs:
           enable_supervised_users = false
           enable_widevine = false
 
-          # Compiler optimizations for speed
           enable_resource_allowlist_generation = false
           strip_absolute_paths_from_debug_symbols = false
           treat_warnings_as_errors = false
