@@ -26,11 +26,9 @@ jobs:
           sudo apt-get clean
           sudo apt-get autoremove -y -qq
 
-          # Safely turn off any active swap first so there is never a "Text file busy" error
+          # Safely reset and create swap
           sudo swapoff -a || true
           sudo rm -f /swapfile /mnt/swapfile || true
-
-          # Create fresh 10 GB swap
           sudo fallocate -l 10G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=10240
           sudo chmod 600 /mnt/swapfile
           sudo mkswap /mnt/swapfile
@@ -111,17 +109,19 @@ jobs:
             https://github.com/gorhill/uBlock/releases/download/1.74.1b5/uBlock0_1.74.1b5.chromium.crx
           echo "uBlock Origin CRX ready ($(wc -c < /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx) bytes)"
 
-      # 7. HIGH-SPEED GN SETTINGS (Drops 50,000 extra targets)
+      # 7. CONFIGURE LEAN ARM64 GN SETTINGS
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
           mkdir -p out/Default
           cat << 'EOF' > out/Default/args.gn
+          # Target only 64-bit ARM Android
           target_os = "android"
           target_cpu = "arm64"
           android_64bit_browser = true
           build_apk_secondary_abi = false
 
+          # Release & performance configuration
           is_debug = false
           is_component_build = false
           is_official_build = false
@@ -133,14 +133,13 @@ jobs:
           proprietary_codecs = true
           enable_nacl = false
 
+          # Speed stripping: disable VR, ARCore, and Print Preview
           enable_vr = false
           enable_arcore = false
-          enable_pdf = false
           enable_print_preview = false
-          enable_reporting = false
-          enable_supervised_users = false
           enable_widevine = false
 
+          # Build acceleration settings
           enable_resource_allowlist_generation = false
           strip_absolute_paths_from_debug_symbols = false
           treat_warnings_as_errors = false
