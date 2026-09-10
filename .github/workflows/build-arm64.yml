@@ -1,4 +1,4 @@
-name: Build Bare Browser ARM64 APK with Vertical Stack (100% Free)
+name: Build Bare Browser ARM64 APK
 
 on:
   workflow_dispatch:
@@ -39,12 +39,16 @@ jobs:
       - name: Install Build Prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y git curl python3 build-essential openjdk-17-jdk ninja-build ccache
+          sudo apt-get install -y git curl python3 python3-pip build-essential openjdk-17-jdk ninja-build ccache
 
-      - name: Install Google depot_tools
+      # Fixed: Clones and bootstraps depot_tools so python3_bin_reldir.txt exists
+      - name: Install and Bootstrap Google depot_tools
         run: |
           git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git $HOME/depot_tools
           echo "$HOME/depot_tools" >> $GITHUB_PATH
+          export PATH="$HOME/depot_tools:$PATH"
+          # Run gclient once to initialize depot_tools and create python3_bin_reldir.txt
+          gclient || true
 
       - name: Shallow Fetch Chromium Base
         run: |
@@ -57,7 +61,7 @@ jobs:
       - name: Apply Bare Browser Patches (including Vertical Stack)
         run: |
           cd /home/runner/work/bare-build/src
-          echo "Applying patch series..."
+          echo "Applying Bare Browser patches..."
           if [ -d "$GITHUB_WORKSPACE/patches" ]; then
             for patch in $(find "$GITHUB_WORKSPACE/patches" -type f -name "*.patch" | sort); do
               echo "Applying $patch..."
