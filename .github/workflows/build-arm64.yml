@@ -1,4 +1,4 @@
-name: Build Bare Browser APK
+name: Build Bare Browser APK (ARM64 Only)
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. MAXIMIZE RUNNER DISK SPACE (Frees ~50+ GB of space)
+      # 1. MAXIMIZE RUNNER DISK SPACE (Removes unused toolchains)
       - name: Maximize Runner Disk Space
         run: |
           echo "=== Initial Disk Space ==="
@@ -36,7 +36,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq git curl python3 build-essential openjdk-17-jdk ninja-build
 
-      # 3. SETUP DEPOT TOOLS (Silencing metrics warnings)
+      # 3. SETUP DEPOT TOOLS (Disable metrics & Windows/Mac telemetry)
       - name: Setup Depot Tools
         run: |
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /home/runner/depot_tools
@@ -46,7 +46,7 @@ jobs:
           echo "opt-out" > /home/runner/depot_tools/metrics.cfg
           echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
 
-      # 4. FETCH SHALLOW CHROMIUM ANDROID BASE (Fast parallel sync)
+      # 4. FETCH ONLY ARM64 ANDROID CHROMIUM (No Windows, Fuchsia, or x86)
       - name: Fetch Shallow Chromium Android
         run: |
           mkdir -p /home/runner/chromium
@@ -61,6 +61,7 @@ jobs:
               "managed": False,
               "custom_deps": {
                 "src/third_party/fuchsia-gn-sdk": None,
+                "src/chrome/installer/mac/third_party/xz/xz": None,
               },
               "custom_vars": {
                 "checkout_android": True,
@@ -79,7 +80,7 @@ jobs:
           echo "Syncing Chromium source tree..."
           /home/runner/depot_tools/gclient sync --no-history --shallow --nohooks -j 4
 
-          echo "Syncing Android toolchains & hooks..."
+          echo "Syncing Android 64-bit toolchains..."
           cd src
           /home/runner/depot_tools/gclient runhooks -j 4
 
@@ -92,22 +93,29 @@ jobs:
             git apply --ignore-whitespace --ignore-space-change "$p" || git apply --reject "$p" || true
           done
 
-      # 6. DOWNLOAD UBLOCK ORIGIN CRX (Using latest 1.74.1b5 release)
+      # 6. DOWNLOAD UBLOCK ORIGIN CRX
       - name: Download uBlock Origin CRX
         run: |
           mkdir -p /home/runner/chromium/src/chrome/browser/resources/bare
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.1b5/uBlock0_1.74.1b5.chromium.crx
-          echo "uBlock Origin CRX downloaded successfully! File size: $(wc -c < /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx) bytes"
+          echo "uBlock Origin CRX ready ($(wc -c < /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx) bytes)"
 
-      # 7. CONFIGURE LEAN GN BUILD SETTINGS
+      # 7. STRICT PURE ARM64 GN CONFIGURATION (Skips arm32, x86, & Windows)
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
           mkdir -p out/Default
           cat << 'EOF' > out/Default/args.gn
+          # Target only 64-bit ARM Android
           target_os = "android"
           target_cpu = "arm64"
+          android_64bit_browser = true
+
+          # Exclude all 32-bit secondary architecture compilation
+          build_apk_secondary_abi = false
+
+          # Release optimization settings (fastest build time)
           is_debug = false
           is_component_build = false
           is_official_build = false
@@ -118,17 +126,23 @@ jobs:
           ffmpeg_branding = "Chrome"
           proprietary_codecs = true
           enable_nacl = false
+
+          # Disable heavy test configs and dead code analysis
+          enable_resource_allowlist_generation = false
+          strip_absolute_paths_from_debug_symbols = false
+          treat_warnings_as_errors = false
+          disable_fieldtrial_testing_config = true
           EOF
           /home/runner/depot_tools/gn gen out/Default
 
-      # 8. COMPILE THE ARM64 APK
+      # 8. COMPILE PURE ARM64 APK (Using all 4 cores)
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
-          /home/runner/depot_tools/autoninja -C out/Default -j 2 chrome_public_apk
+          /home/runner/depot_tools/autoninja -C out/Default -j 4 chrome_public_apk
 
-      # 9. UPLOAD APK AS ARTIFACT
+      # 9. UPLOAD FINISHED ARM64 APK
       - name: Upload Finished APK
         uses: actions/upload-artifact@v4
         with:
