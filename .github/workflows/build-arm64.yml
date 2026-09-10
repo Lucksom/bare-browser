@@ -12,17 +12,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. MAXIMIZE DISK SPACE (Frees ~50+ GB)
+      # 1. MAXIMIZE RUNNER DISK SPACE (Frees ~50+ GB of space)
       - name: Maximize Runner Disk Space
         run: |
-          echo "Initial Space:"
+          echo "=== Initial Disk Space ==="
           df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
           sudo docker image prune --all --force || true
           sudo swapoff -a || true
           sudo rm -f /mnt/swapfile || true
           sudo apt-get clean
-          echo "Maximized Space:"
+          sudo apt-get autoremove -y -qq
+          echo "=== Maximized Disk Space ==="
           df -h /
 
       # 2. INSTALL SYSTEM PREREQUISITES
@@ -31,13 +36,17 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq git curl python3 build-essential openjdk-17-jdk ninja-build
 
-      # 3. SETUP DEPOT TOOLS
+      # 3. SETUP DEPOT TOOLS (Silencing metrics warnings)
       - name: Setup Depot Tools
         run: |
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /home/runner/depot_tools
           echo "/home/runner/depot_tools" >> $GITHUB_PATH
+          mkdir -p ~/.config
+          touch /home/runner/depot_tools/metrics.cfg
+          echo "opt-out" > /home/runner/depot_tools/metrics.cfg
+          echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
 
-      # 4. FETCH SHALLOW CHROMIUM ANDROID BASE
+      # 4. FETCH SHALLOW CHROMIUM ANDROID BASE (Fast parallel sync)
       - name: Fetch Shallow Chromium Android
         run: |
           mkdir -p /home/runner/chromium
@@ -50,10 +59,12 @@ jobs:
               "url": "https://chromium.googlesource.com/chromium/src.git",
               "deps_file": "DEPS",
               "managed": False,
-              "custom_deps": {},
+              "custom_deps": {
+                "src/third_party/fuchsia-gn-sdk": None,
+              },
               "custom_vars": {
                 "checkout_android": True,
-                "checkout_android_prebuilts_build_tools": True,
+                "checkout_android_native_support": True,
                 "checkout_pgo_profiles": False,
               },
             },
@@ -63,28 +74,32 @@ jobs:
 
           git config --global pack.threads 1
           git config --global pack.windowMemory 256m
+          export DEPOT_TOOLS_METRICS=0
 
-          /home/runner/depot_tools/gclient sync --no-history --shallow --nohooks -j2
+          echo "Syncing Chromium source tree..."
+          /home/runner/depot_tools/gclient sync --no-history --shallow --nohooks -j 4
+          
+          echo "Syncing Android toolchains & hooks..."
           cd src
-          /home/runner/depot_tools/gclient runhooks
+          /home/runner/depot_tools/gclient runhooks -j 4
 
-      # 5. APPLY ALL PATCHES (INCLUDING VERTICAL STACK)
+      # 5. APPLY ALL PATCHES (INCLUDING VERTICAL STACK SWITCHER)
       - name: Apply Patches
         run: |
           cd /home/runner/chromium/src
           for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" | sort); do
-            echo "Applying $p..."
+            echo "Applying patch: $p"
             git apply --ignore-whitespace --ignore-space-change "$p" || git apply --reject "$p" || true
           done
 
-      # 6. DOWNLOAD UBLOCK ORIGIN EXTENSION ASSET
+      # 6. DOWNLOAD UBLOCK ORIGIN CRX (Required by Bare Browser patch 0059)
       - name: Download uBlock Origin CRX
         run: |
           mkdir -p /home/runner/chromium/src/chrome/browser/resources/bare
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.62.0/uBlock0_1.62.0.chromium.signed.crx
 
-      # 7. CONFIGURE LEAN GN ARGS
+      # 7. CONFIGURE LEAN GN BUILD SETTINGS
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -109,6 +124,7 @@ jobs:
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
+          export DEPOT_TOOLS_METRICS=0
           /home/runner/depot_tools/autoninja -C out/Default -j 2 chrome_public_apk
 
       # 9. UPLOAD APK AS ARTIFACT
