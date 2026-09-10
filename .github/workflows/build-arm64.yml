@@ -1,4 +1,4 @@
-name: Build Bare Browser APK (ARM64 Optimized)
+name: Build Bare Browser APK (ARM64)
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. MAXIMIZE RUNNER DISK SPACE & SAFE SWAP SETUP
+      # 1. MAXIMIZE RUNNER DISK SPACE & SETUP 10GB SWAP
       - name: Maximize Runner Disk Space & Setup Swap
         run: |
           echo "=== Initial Disk Space ==="
@@ -26,7 +26,7 @@ jobs:
           sudo apt-get clean
           sudo apt-get autoremove -y -qq
 
-          # Safely reset and create swap
+          # Safely setup 10GB swap to prevent compiler OOM
           sudo swapoff -a || true
           sudo rm -f /swapfile /mnt/swapfile || true
           sudo fallocate -l 10G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=10240
@@ -35,7 +35,7 @@ jobs:
           sudo swapon /mnt/swapfile
           free -h
 
-          echo "=== Disk Space After Cleanup ==="
+          echo "=== Disk Space Ready ==="
           df -h /
 
       # 2. INSTALL SYSTEM PREREQUISITES
@@ -109,19 +109,14 @@ jobs:
             https://github.com/gorhill/uBlock/releases/download/1.74.1b5/uBlock0_1.74.1b5.chromium.crx
           echo "uBlock Origin CRX ready ($(wc -c < /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx) bytes)"
 
-      # 7. CONFIGURE LEAN ARM64 GN SETTINGS
+      # 7. CONFIGURE OFFICIAL CANONICAL ARM64 GN SETTINGS
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
           mkdir -p out/Default
           cat << 'EOF' > out/Default/args.gn
-          # Target only 64-bit ARM Android
           target_os = "android"
           target_cpu = "arm64"
-          android_64bit_browser = true
-          build_apk_secondary_abi = false
-
-          # Release & performance configuration
           is_debug = false
           is_component_build = false
           is_official_build = false
@@ -132,22 +127,10 @@ jobs:
           ffmpeg_branding = "Chrome"
           proprietary_codecs = true
           enable_nacl = false
-
-          # Speed stripping: disable VR, ARCore, and Print Preview
-          enable_vr = false
-          enable_arcore = false
-          enable_print_preview = false
-          enable_widevine = false
-
-          # Build acceleration settings
-          enable_resource_allowlist_generation = false
-          strip_absolute_paths_from_debug_symbols = false
-          treat_warnings_as_errors = false
-          disable_fieldtrial_testing_config = true
           EOF
           /home/runner/depot_tools/gn gen out/Default
 
-      # 8. COMPILE FAST ARM64 APK
+      # 8. COMPILE THE ARM64 APK (Balanced concurrency with Swap protection)
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
