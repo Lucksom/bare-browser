@@ -30,10 +30,13 @@ jobs:
         run: |
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /home/runner/depot_tools
           echo "/home/runner/depot_tools" >> $GITHUB_PATH
+          mkdir -p ~/.config
+          touch /home/runner/depot_tools/metrics.cfg
+          echo "opt-out" > /home/runner/depot_tools/metrics.cfg
           echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
 
-      # 3. Shallow fetch latest Chromium Android (153+)
-      - name: Fetch Shallow Chromium Android
+      # 3. Fetch exact Chromium revision 945b51156108ba94d62f235a75379772da8ced30
+      - name: Fetch Exact Chromium Android Base
         run: |
           mkdir -p /home/runner/chromium
           cd /home/runner/chromium
@@ -42,7 +45,7 @@ jobs:
           solutions = [
             {
               "name": "src",
-              "url": "https://chromium.googlesource.com/chromium/src.git",
+              "url": "https://chromium.googlesource.com/chromium/src.git@945b51156108ba94d62f235a75379772da8ced30",
               "deps_file": "DEPS",
               "managed": False,
               "custom_deps": {
@@ -61,21 +64,22 @@ jobs:
 
           /home/runner/depot_tools/gclient sync --no-history --shallow --nohooks -j 4
           cd src
+          git checkout 945b51156108ba94d62f235a75379772da8ced30
           /home/runner/depot_tools/gclient runhooks -j 4
 
-      # 4. Ultra-Fast Multi-Threaded Compression with zstd -T0 -1
+      # 4. Prune only third_party .git (keep root src/.git) & compress with multi-core zstd
       - name: Compress & Split Base Source
         run: |
           cd /home/runner/chromium
-          echo "Removing .git directories to make tarball lightweight..."
-          find src/ -name ".git" -type d -prune -exec rm -rf {} + || true
+          echo "Pruning third_party .git to save space while keeping root src/.git..."
+          find src/third_party/ -name ".git" -type d -prune -exec rm -rf {} + || true
 
           mkdir -p /home/runner/release_assets
 
-          echo "Starting ultra-fast multi-core zstd compression (Level 1, all cores)..."
+          echo "Starting multi-core zstd compression (Level 1, all cores)..."
           tar -cf - src/ | zstd -T0 -1 | split -b 1800M - /home/runner/release_assets/chromium-bare-base.tar.zst.part_
 
-          echo "Compression complete! Generated split parts:"
+          echo "Base archive ready:"
           ls -lh /home/runner/release_assets/
 
       # 5. Upload to GitHub Releases
@@ -83,8 +87,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: chromium-bare-base
-          name: "Chromium Android Base Archive (Bare 153+)"
-          body: "Pre-synced shallow Chromium source split in parts under 2GB."
+          name: "Chromium Android Base (Revision 945b511)"
+          body: "Pinned Chromium 153 base (commit 945b51156108ba94d62f235a75379772da8ced30) with root git index preserved."
           files: /home/runner/release_assets/chromium-bare-base.tar.zst.part_*
           draft: false
           prerelease: false
