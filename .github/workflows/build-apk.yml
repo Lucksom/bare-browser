@@ -39,14 +39,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. SETUP SYSTEM RESOURCES, 10GB SWAP & RAM-DISK TEMP
+      # 1. SETUP SYSTEM RESOURCES & ACCELERATION
       - name: Setup System Resources & Acceleration
         run: |
-          echo "=== System Hardware Info ==="
-          nproc
-          free -h
-          df -h /
-
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
           sudo docker image prune --all --force || true
           sudo apt-get clean
@@ -58,7 +53,6 @@ jobs:
           sudo chmod 600 /mnt/swapfile
           sudo mkswap /mnt/swapfile
           sudo swapon /mnt/swapfile
-          free -h
 
           mkdir -p /dev/shm/tmp
           chmod 1777 /dev/shm/tmp
@@ -93,7 +87,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5. APPLY PATCHES (AUTHOR OFFICIAL git am METHOD)
+      # 5. APPLY PATCHES
       - name: Apply Official Bare Patches
         run: |
           cd /home/runner/chromium/src
@@ -106,13 +100,16 @@ jobs:
             git am --3way --ignore-whitespace "$p" || git apply --recount --ignore-space-change "$p" || patch -p1 --forward < "$p" || true
           done
 
-      # 6. INJECT KIWI TAB SWITCHER SETTINGS (100% GRIT-SAFE)
+      # 6. INJECT KIWI TAB SWITCHER (USING EXTERNAL SCRIPT TO PREVENT YAML ERRORS)
       - name: Inject Kiwi Tab Switcher Settings
         run: |
           cd /home/runner/chromium/src
-          python3 -c '
-          import os, glob
 
+          cat << 'EOF' > inject_switcher.py
+          import os
+
+          # 1. Inject Preference into Tabs Settings XML
+          pref_tag = '\n    <ListPreference android:key="tab_switcher_type" android:title="Tab switcher" android:summary="%s" android:defaultValue="1" />\n'
           for root, dirs, files in os.walk("chrome"):
               for f in files:
                   if f in ["tabs_settings_preferences.xml", "tab_management_preferences.xml", "tabs_preferences.xml"]:
@@ -120,17 +117,20 @@ jobs:
                       with open(p, "r", encoding="utf-8") as xf:
                           c = xf.read()
                       if "tab_switcher_type" not in c:
-                          tag = """
-      <ListPreference
-          android:key="tab_switcher_type"
-          android:title="Tab switcher"
-          android:summary="%s"
-          android:defaultValue="1" />
-  """
-                          c = c.replace("</PreferenceScreen>", tag + "</PreferenceScreen>")
+                          c = c.replace("</PreferenceScreen>", pref_tag + "</PreferenceScreen>")
                           with open(p, "w", encoding="utf-8") as xf:
                               xf.write(c)
 
+          # 2. Hook Java Settings fragment to populate entries directly
+          pop_code = """
+          androidx.preference.ListPreference tabPref = findPreference("tab_switcher_type");
+          if (tabPref != null) {
+              CharSequence[] entries = new CharSequence[]{"Default", "Original (Vertical)", "Horizontal", "Grid", "List"};
+              CharSequence[] values = new CharSequence[]{"0", "1", "2", "3", "4"};
+              tabPref.setEntries(entries);
+              tabPref.setEntryValues(values);
+          }
+          """
           for root, dirs, files in os.walk("chrome/android"):
               for f in files:
                   if f in ["TabsSettings.java", "TabManagementSettings.java", "MainSettings.java"]:
@@ -141,22 +141,21 @@ jobs:
                       except Exception:
                           continue
                       if "onCreatePreferences" in jc and "tab_switcher_type" not in jc:
-                          populate_code = """
-          androidx.preference.ListPreference tabPref = findPreference("tab_switcher_type");
-          if (tabPref != null) {
-              CharSequence[] entries = new CharSequence[]{"Default", "Original (Vertical)", "Horizontal", "Grid", "List"};
-              CharSequence[] values = new CharSequence[]{"0", "1", "2", "3", "4"};
-              tabPref.setEntries(entries);
-              tabPref.setEntryValues(values);
-          }
-                          """
                           idx = jc.find("super.onCreatePreferences(")
                           if idx != -1:
                               end_idx = jc.find(";", idx) + 1
-                              jc = jc[:end_idx] + populate_code + jc[end_idx:]
+                              jc = jc[:end_idx] + pop_code + jc[end_idx:]
                               with open(jp, "w", encoding="utf-8") as jf:
                                   jf.write(jc)
 
+          # 3. Hook Tab Switcher Logic in Java
+          hook = """public static boolean isGridTabSwitcherEnabled(Context context) {
+                  try {
+                      android.content.SharedPreferences sp = android.preference.PreferenceManager.getDefaultSharedPreferences(context);
+                      String mode = sp.getString("tab_switcher_type", "1");
+                      if ("1".equals(mode) || "4".equals(mode)) return false;
+                  } catch (Exception ignored) {}
+          """
           for root, dirs, files in os.walk("chrome"):
               for f in files:
                   if f.endswith(".java"):
@@ -167,30 +166,24 @@ jobs:
                       except Exception:
                           continue
                       if "isGridTabSwitcherEnabled" in jc and "Context context" in jc:
-                          hook = """public static boolean isGridTabSwitcherEnabled(Context context) {
-                  try {
-                      android.content.SharedPreferences sp = android.preference.PreferenceManager.getDefaultSharedPreferences(context);
-                      String mode = sp.getString("tab_switcher_type", "1");
-                      if ("1".equals(mode) || "4".equals(mode)) return false;
-                  } catch (Exception ignored) {}
-          """
                           jc = jc.replace("public static boolean isGridTabSwitcherEnabled(Context context) {", hook)
                           with open(jp, "w", encoding="utf-8") as f:
                               f.write(jc)
-          '
-          find chrome/ -name "*.rej" -delete || true
-          find chrome/ -name "*.orig" -delete || true
+          EOF
+
+          python3 inject_switcher.py
+          rm -f inject_switcher.py
           find . -name "*.rej" -delete || true
           find . -name "*.orig" -delete || true
 
-      # 7. DOWNLOAD UBLOCK ORIGIN (AUTHOR SPEC: 1.73.0)
-      - name: Download uBlock Origin 1.73.0
+      # 7. DOWNLOAD UBLOCK ORIGIN CRX
+      - name: Download uBlock Origin CRX
         run: |
           mkdir -p /home/runner/chromium/src/chrome/browser/resources/bare
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.73.0/uBlock0_1.73.0.chromium.crx
 
-      # 8. CONFIGURE GN (OFFICIAL ARGS + SPEED BOOST)
+      # 8. CONFIGURE GN
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -252,7 +245,7 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Bare
 
-      # 9. COMPILE APK (4-CORE CONCURRENCY)
+      # 9. COMPILE APK
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
@@ -284,11 +277,7 @@ jobs:
         with:
           tag_name: v1.0.0-alpha.3-kiwi
           name: "Bare Browser v1.0.0 (with Kiwi Tab Switcher)"
-          body: |
-            ### 🚀 Bare Browser v1.0.0-alpha.3 (ARM64)
-            - **Kiwi Tab Switcher**: Select between Default, Original (Vertical), Horizontal, Grid, and List in Settings -> Tabs and tab groups!
-            - **uBlock Origin 1.73.0 Built-in**: Full MV2 extension adblocking support.
-            - **Optimized ARM64 Build**: Pure 64-bit performance for modern Android devices.
+          body: "Bare Browser v1.0.0-alpha.3 ARM64 with Kiwi Tab Switcher and uBlock Origin 1.73.0"
           files: /home/runner/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
           draft: false
           prerelease: false
