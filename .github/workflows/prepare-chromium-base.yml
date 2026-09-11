@@ -63,17 +63,19 @@ jobs:
           cd src
           /home/runner/depot_tools/gclient runhooks -j 4
 
-      # 4. Compress with zstd & Split into <1.8GB parts (bypasses GitHub 2GB limit)
+      # 4. Ultra-Fast Multi-Threaded Compression with zstd -T0 -1
       - name: Compress & Split Base Source
         run: |
           cd /home/runner/chromium
+          echo "Removing .git directories to make tarball lightweight..."
           find src/ -name ".git" -type d -prune -exec rm -rf {} + || true
 
-          echo "Compressing Chromium source with zstd..."
           mkdir -p /home/runner/release_assets
-          tar --zstd -cf - src/ | split -b 1800M - /home/runner/release_assets/chromium-bare-base.tar.zst.part_
 
-          echo "Generated split parts (all under 1.8GB):"
+          echo "Starting ultra-fast multi-core zstd compression (Level 1, all cores)..."
+          tar -cf - src/ | zstd -T0 -1 | split -b 1800M - /home/runner/release_assets/chromium-bare-base.tar.zst.part_
+
+          echo "Compression complete! Generated split parts:"
           ls -lh /home/runner/release_assets/
 
       # 5. Upload to GitHub Releases
