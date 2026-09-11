@@ -1,57 +1,9 @@
---- a/chrome/android/java/src/org/chromium/chrome/browser/compositor/layouts/LayoutManagerChrome.java
-+++ b/chrome/android/java/src/org/chromium/chrome/browser/compositor/layouts/LayoutManagerChrome.java
-@@ -25,6 +25,7 @@
- import org.chromium.chrome.browser.compositor.layouts.phone.stack.StackLayout;
- import org.chromium.chrome.browser.tabmodel.TabModelSelector;
- import org.chromium.chrome.browser.tasks.tab_management.TabUiFeatureUtilities;
-+import org.chromium.chrome.browser.flags.ChromeFeatureList;
- import org.chromium.ui.resources.dynamics.DynamicResourceLoader;
- 
- /**
-@@ -45,15 +46,35 @@
-     protected void init(Context context) {
-         super.init(context);
- 
--        boolean isGridEnabled = TabUiFeatureUtilities.isGridTabSwitcherEnabled(context);
--        if (isGridEnabled) {
--            createTabSwitcherLayout(context);
--        } else {
--            createStackLayout(context);
--        }
-+        // Force vertical stack tab switcher layout
-+        createStackLayout(context);
-+    }
-+
-+    private void createStackLayout(Context context) {
-+        if (mStackLayout == null) {
-+            mStackLayout = new StackLayout(context, this, mRenderHost);
-+        }
-+        addLayout(mStackLayout);
-+        setTabSwitcherLayout(mStackLayout);
-     }
-+
-+    private StackLayout mStackLayout;
- }
---- a/chrome/android/java/src/org/chromium/chrome/browser/tasks/tab_management/TabUiFeatureUtilities.java
-+++ b/chrome/android/java/src/org/chromium/chrome/browser/tasks/tab_management/TabUiFeatureUtilities.java
-@@ -35,11 +35,19 @@
+--- a/chrome/android/features/tab_ui/java/src/org/chromium/chrome/browser/tasks/tab_management/TabUiFeatureUtilities.java
++++ b/chrome/android/features/tab_ui/java/src/org/chromium/chrome/browser/tasks/tab_management/TabUiFeatureUtilities.java
+@@ -40,6 +40,7 @@ public class TabUiFeatureUtilities {
       * @return Whether the Tab Grid / Group UI is enabled.
       */
      public static boolean isGridTabSwitcherEnabled(Context context) {
--        return ChromeFeatureList.sTabGridLayoutAndroid.isEnabled();
-+        // Always disable grid tab switcher so vertical stack layout is selected
-+        return false;
++        if (true) return false;
+         return ChromeFeatureList.sTabGridLayoutAndroid.isEnabled();
      }
- 
-     /**
-      * @return Whether the tab strip / tab switcher should use vertical stack.
-      */
-     public static boolean isTabGroupsAndroidEnabled(Context context) {
--        return ChromeFeatureList.sTabGroupsAndroid.isEnabled();
-+        return false;
-+    }
-+
-+    public static boolean isTabSwitcherOnReturnEnabled() {
-+        return false;
-     }
- }
