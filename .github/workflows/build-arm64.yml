@@ -42,7 +42,7 @@ jobs:
       - name: Install Build Prerequisites
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq git curl python3 build-essential openjdk-17-jdk ninja-build
+          sudo apt-get install -y -qq git curl python3 build-essential openjdk-17-jdk ninja-build patch
 
       # 3. SETUP DEPOT TOOLS
       - name: Setup Depot Tools
@@ -54,7 +54,7 @@ jobs:
           echo "opt-out" > /home/runner/depot_tools/metrics.cfg
           echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
 
-      # 4. FAST SHALLOW FETCH CHROMIUM ANDROID (Finishes in ~8 mins)
+      # 4. FAST SHALLOW FETCH CHROMIUM ANDROID
       - name: Fetch Shallow Chromium Android
         run: |
           mkdir -p /home/runner/chromium
@@ -92,7 +92,7 @@ jobs:
           cd src
           /home/runner/depot_tools/gclient runhooks -j 4
 
-      # 5. APPLY PATCHES (CRITICAL: FAILS FAST IF TAB SWITCHER FAILS)
+      # 5. APPLY PATCHES (CRITICAL: STOPS IF TAB SWITCHER FAILS)
       - name: Apply Patches
         run: |
           cd /home/runner/chromium/src
@@ -100,7 +100,7 @@ jobs:
           # 1. Apply base patches
           for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" ! -name "*0100-restore-vertical-stack-tab-switcher.patch*" | sort); do
             echo "Applying base patch: $p"
-            git apply --recount --ignore-whitespace --ignore-space-change "$p" || git apply --reject "$p" || true
+            git apply --recount --ignore-whitespace --ignore-space-change "$p" || patch -p1 --forward < "$p" || git apply --reject "$p" || true
           done
 
           # 2. Strict check on Vertical Tab Switcher
@@ -109,7 +109,15 @@ jobs:
             echo "========================================================="
             echo "CRITICAL STEP: Applying Vertical Stack Tab Switcher..."
             echo "========================================================="
-            if ! git apply --recount --ignore-whitespace --ignore-space-change "$VERTICAL_PATCH"; then
+            
+            APPLIED=false
+            if git apply --ignore-whitespace --ignore-space-change "$VERTICAL_PATCH"; then
+              APPLIED=true
+            elif patch -p1 --forward --ignore-whitespace < "$VERTICAL_PATCH"; then
+              APPLIED=true
+            fi
+
+            if [ "$APPLIED" != "true" ]; then
               echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
               echo "ERROR: Vertical Stack Tab Switcher patch FAILED to apply!"
               echo "Stopping workflow immediately to prevent wasted time."
@@ -143,6 +151,7 @@ jobs:
           mkdir -p /home/runner/chromium/src/chrome/browser/resources/bare
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.1b5/uBlock0_1.74.1b5.chromium.crx
+          echo "uBlock Origin CRX ready ($(wc -c < /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx) bytes)"
 
       # 7. CONFIGURE OFFICIAL ARM64 GN SETTINGS
       - name: Configure GN Args
