@@ -1,4 +1,4 @@
-name: 2. Build Bare Browser APK (Fast Base + CCache)
+name: 2. Build Bare Browser APK (Author Official Specs)
 
 on:
   workflow_dispatch:
@@ -50,32 +50,13 @@ jobs:
           sudo mkswap /mnt/swapfile
           sudo swapon /mnt/swapfile
 
-      # 2. INSTALL PREREQUISITES & CCACHE
+      # 2. INSTALL PREREQUISITES
       - name: Install Prerequisites
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq git curl python3 build-essential openjdk-17-jdk ninja-build patch zstd ccache
+          sudo apt-get install -y -qq git curl python3 build-essential openjdk-17-jdk ninja-build patch zstd
 
-      # 3. CONFIGURE CCACHE
-      - name: Configure CCache
-        run: |
-          mkdir -p ~/.cache/ccache
-          ccache --set-config=max_size=8.0G
-          ccache --set-config=compression=true
-          ccache --set-config=compression_level=1
-          ccache -z
-          ccache -s
-
-      # 4. RESTORE / SAVE CCACHE (Saves even if build fails!)
-      - name: CCache Cache Storage
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/.cache/ccache
-          key: ccache-bare-${{ github.sha }}
-          restore-keys: |
-            ccache-bare-
-
-      # 5. SETUP DEPOT TOOLS
+      # 3. SETUP DEPOT TOOLS
       - name: Setup Depot Tools
         run: |
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /home/runner/depot_tools
@@ -87,7 +68,7 @@ jobs:
           export DEPOT_TOOLS_METRICS=0
           /home/runner/depot_tools/ensure_bootstrap || /home/runner/depot_tools/update_depot_tools
 
-      # 6. DOWNLOAD & EXTRACT BASE
+      # 4. DOWNLOAD & EXTRACT AUTHOR BASE
       - name: Download and Extract Base Archive
         run: |
           mkdir -p /home/runner/chromium
@@ -98,16 +79,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 7. APPLY PATCHES
-      - name: Apply Patches
+      # 5. APPLY PATCHES (USING AUTHOR'S EXACT METHOD: git am)
+      - name: Apply Official Bare Patches
         run: |
           cd /home/runner/chromium/src
-          find . -name "tab_switcher_arrays.xml" -delete || true
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+          echo "Applying patches with git am (Author's exact method)..."
           for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" ! -name "*0100*" | sort); do
-            git apply --3way --ignore-whitespace "$p" || git apply --recount --ignore-space-change "$p" || patch -p1 --forward < "$p" || true
+            echo "Applying: $(basename $p)"
+            git am --3way --ignore-whitespace "$p" || git apply --recount --ignore-space-change "$p" || patch -p1 --forward < "$p" || true
           done
 
-      # 8. INJECT KIWI TAB SWITCHER SETTINGS
+      # 6. INJECT KIWI TAB SWITCHER SETTINGS
       - name: Inject Kiwi Tab Switcher Settings
         run: |
           cd /home/runner/chromium/src
@@ -160,7 +145,7 @@ jobs:
                   if "tab_switcher_entries" not in txt:
                       txt = txt.replace("</resources>", arrays_data)
                       with open(sf, "w", encoding="utf-8") as f:
-                          sf.write(txt)
+                          f.write(txt)
                       break
 
           # 3. Hook Preference in Java
@@ -190,72 +175,79 @@ jobs:
           find . -name "*.rej" -delete || true
           find . -name "*.orig" -delete || true
 
-          TARGET_FILE="components/browser_ui/site_settings/android/java/src/org/chromium/components/browser_ui/site_settings/SiteSettingsCategory.java"
-          if [ -f "$TARGET_FILE" ]; then
-            sed -i '/Type\.AUTOPLAY,/d' "$TARGET_FILE"
-            sed -i '/Type\.AUTOPLAY/d' "$TARGET_FILE"
-          fi
-
-      # 9. DOWNLOAD UBLOCK ORIGIN
-      - name: Download uBlock Origin CRX
+      # 7. DOWNLOAD UBLOCK ORIGIN (Author's exact version 1.73.0)
+      - name: Download uBlock Origin 1.73.0
         run: |
           mkdir -p /home/runner/chromium/src/chrome/browser/resources/bare
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
-            https://github.com/gorhill/uBlock/releases/download/1.74.1b5/uBlock0_1.74.1b5.chromium.crx
+            https://github.com/gorhill/uBlock/releases/download/1.73.0/uBlock0_1.73.0.chromium.crx
 
-      # 10. CONFIGURE GN WITH CCACHE ENABLED
-      - name: Configure GN Args (with CCache)
+      # 8. CONFIGURE GN (Author's EXACT official release arguments)
+      - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
-          mkdir -p out/Default
-          cat << 'EOF' > out/Default/args.gn
+          mkdir -p out/Bare
+          cat << 'EOF' > out/Bare/args.gn
           target_os = "android"
           target_cpu = "arm64"
+          is_desktop_android = true
+          is_official_build = true
           is_debug = false
+          is_java_debug = false
           is_component_build = false
-          is_official_build = false
+          dcheck_always_on = false
+          android_static_analysis = "off"
           symbol_level = 0
           blink_symbol_level = 0
           v8_symbol_level = 0
-          dcheck_always_on = false
-          ffmpeg_branding = "Chrome"
-          proprietary_codecs = true
-          enable_nacl = false
-          concurrent_links = 1
-          cc_wrapper = "ccache"
-          EOF
-          /home/runner/depot_tools/gn gen out/Default
+          use_remoteexec = false
+          use_reclient = false
 
-      # 11. COMPILE APK (CCACHE ACCELERATED)
+          proprietary_codecs = true
+          ffmpeg_branding = "Chrome"
+
+          use_mlkit_for_aicore = false
+          enable_glic_internal_resources = false
+          enable_reporting = false
+          enable_service_discovery = false
+          enable_mdns = false
+          enable_arcore = false
+          enable_cardboard = false
+          enable_openxr = false
+
+          disable_fieldtrial_testing_config = true
+
+          chrome_public_manifest_package = "org.barebrowser"
+          android_override_version_code = "801000065"
+          android_override_version_name = "1.0.0-alpha.3"
+          concurrent_links = 1
+          EOF
+          /home/runner/depot_tools/gn gen out/Bare
+
+      # 9. COMPILE APK (Author's target directory: out/Bare)
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
           CORES=$(nproc)
-          /home/runner/depot_tools/autoninja -C out/Default -j $CORES chrome_public_apk
+          /home/runner/depot_tools/autoninja -C out/Bare -j $CORES chrome_public_apk
 
-      # 12. PRINT CCACHE STATS (Shows how many thousands of files were cached)
-      - name: Print CCache Statistics
-        if: always()
-        run: |
-          ccache -s
-
-      # 13. PRINT FAILURE LOGS IF FAILED
+      # 9.5 PRINT FAILURE LOGS
       - name: Print Failure Logs
         if: failure()
         run: |
           cd /home/runner/chromium/src
-          if [ -f out/Default/siso_failed_commands.sh ]; then
-            cat out/Default/siso_failed_commands.sh
+          if [ -f out/Bare/siso_failed_commands.sh ]; then
+            cat out/Bare/siso_failed_commands.sh
           fi
-          if [ -f out/Default/siso_output ]; then
-            tail -n 120 out/Default/siso_output
+          if [ -f out/Bare/siso_output ]; then
+            tail -n 120 out/Bare/siso_output
           fi
 
-      # 14. UPLOAD APK ARTIFACT
+      # 10. UPLOAD FINISHED APK
       - name: Upload Finished APK
         uses: actions/upload-artifact@v4
         with:
-          name: BareBrowser-KiwiSwitcher-ARM64
-          path: /home/runner/chromium/src/out/Default/apks/ChromePublic.apk
+          name: BareBrowser-1.0.0-alpha.3-KiwiSwitcher-ARM64
+          path: /home/runner/chromium/src/out/Bare/apks/ChromePublic.apk
           if-no-files-found: error
