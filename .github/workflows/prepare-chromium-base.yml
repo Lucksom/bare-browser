@@ -1,0 +1,89 @@
+name: 1. Prepare & Store Chromium Base (Bare 153+)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-base:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 1. Clean disk space
+      - name: Clean Runner Disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          sudo docker image prune --all --force || true
+          sudo apt-get clean
+          sudo apt-get autoremove -y -qq
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq git curl python3 build-essential zstd
+
+      # 2. Setup depot_tools
+      - name: Setup Depot Tools
+        run: |
+          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /home/runner/depot_tools
+          echo "/home/runner/depot_tools" >> $GITHUB_PATH
+          echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
+
+      # 3. Shallow fetch latest Chromium Android (153+)
+      - name: Fetch Shallow Chromium Android
+        run: |
+          mkdir -p /home/runner/chromium
+          cd /home/runner/chromium
+
+          cat << 'EOF' > .gclient
+          solutions = [
+            {
+              "name": "src",
+              "url": "https://chromium.googlesource.com/chromium/src.git",
+              "deps_file": "DEPS",
+              "managed": False,
+              "custom_deps": {
+                "src/third_party/fuchsia-gn-sdk": None,
+                "src/chrome/installer/mac/third_party/xz/xz": None,
+              },
+              "custom_vars": {
+                "checkout_android": True,
+                "checkout_android_native_support": True,
+                "checkout_pgo_profiles": False,
+              },
+            },
+          ]
+          target_os = ["android"]
+          EOF
+
+          /home/runner/depot_tools/gclient sync --no-history --shallow --nohooks -j 4
+          cd src
+          /home/runner/depot_tools/gclient runhooks -j 4
+
+      # 4. Compress with zstd
+      - name: Compress Base Source
+        run: |
+          cd /home/runner/chromium
+          find src/ -name ".git" -type d -prune -exec rm -rf {} + || true
+
+          echo "Compressing Chromium 153+ base with zstd..."
+          tar --zstd -cf /home/runner/chromium-bare-base.tar.zst src/
+
+          echo "Archive size:"
+          ls -lh /home/runner/chromium-bare-base.tar.zst
+
+      # 5. Upload to GitHub Releases
+      - name: Publish Base Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: chromium-bare-base
+          name: "Chromium Android Base Archive (Bare 153+)"
+          body: "Pre-synced shallow Chromium source for fast Bare Browser APK builds."
+          files: /home/runner/chromium-bare-base.tar.zst
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
