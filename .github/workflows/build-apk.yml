@@ -77,14 +77,18 @@ jobs:
           echo "/home/runner/depot_tools" >> $GITHUB_PATH
           echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
 
-      # 4. INSTANT BASE SOURCE DOWNLOAD FROM RELEASES (Takes 90 seconds!)
+      # 4. INSTANT BASE SOURCE DOWNLOAD & RECOMBINE (Takes 90 seconds!)
       - name: Download Pre-Synced Chromium Base
         run: |
           mkdir -p /home/runner/chromium
           cd /home/runner/chromium
 
-          echo "Downloading pre-synced Chromium 153+ base archive..."
-          gh release download chromium-bare-base -p "chromium-bare-base.tar.zst" --repo ${{ github.repository }}
+          echo "Downloading split Chromium 153+ base parts from GitHub Release..."
+          gh release download chromium-bare-base -p "chromium-bare-base.tar.zst.part_*" --repo ${{ github.repository }}
+
+          echo "Recombining parts..."
+          cat chromium-bare-base.tar.zst.part_* > chromium-bare-base.tar.zst
+          rm -f chromium-bare-base.tar.zst.part_*
 
           echo "Extracting base archive..."
           tar --zstd -xf chromium-bare-base.tar.zst
