@@ -105,14 +105,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5. APPLY PATCHES & INJECT KIWI TAB SWITCHER
+      # 5. APPLY PATCHES (WITH 3-WAY MERGE) & INJECT KIWI TAB SWITCHER
       - name: Apply Patches & Inject Tab Switcher
         run: |
           cd /home/runner/chromium/src
 
           for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" ! -name "*0100*" | sort); do
             echo "Applying patch: $p"
-            git apply --recount --ignore-whitespace --ignore-space-change "$p" || patch -p1 --forward < "$p" || git apply --reject "$p" || true
+            git apply --3way --ignore-whitespace "$p" || git apply --recount --ignore-space-change "$p" || patch -p1 --forward < "$p" || true
           done
 
           # Python injector for Kiwi Tab Switcher Settings under "Tabs and tab groups"
@@ -223,7 +223,7 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Default
 
-      # 8. COMPILE APK USING ALL CORES
+      # 8. COMPILE APK USING ALL CPU CORES
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
