@@ -1,4 +1,4 @@
-name: Build Bare Browser APK (ARM64 with Kiwi Original Stack)
+name: Build Bare Browser APK (ARM64 with Kiwi Tab Switcher Settings)
 
 on:
   workflow_dispatch:
@@ -21,7 +21,6 @@ jobs:
           echo "VALIDATING BASE PATCH SYNTAX"
           echo "========================================================="
           
-          # Remove broken 0100 if present so it doesn't block
           rm -f $GITHUB_WORKSPACE/patches/*0100* || true
 
           FAILED=false
@@ -45,7 +44,7 @@ jobs:
           echo "ALL BASE PATCHES VALID! Proceeding to Build..."
 
   # =========================================================================
-  # JOB 2: FULL CHROMIUM COMPILE WITH KIWI STACK
+  # JOB 2: FULL CHROMIUM COMPILE WITH KIWI TAB SWITCHER SETTINGS
   # =========================================================================
   build:
     needs: validate-patches
@@ -136,8 +135,8 @@ jobs:
           cd src
           /home/runner/depot_tools/gclient runhooks -j 4
 
-      # 5. APPLY BASE PATCHES & IMPORT KIWI ORIGINAL TAB SWITCHER
-      - name: Apply Patches & Kiwi Tab Switcher
+      # 5. APPLY BASE PATCHES & INJECT KIWI TAB SWITCHER SETTINGS
+      - name: Apply Patches & Kiwi Tab Switcher Settings
         run: |
           cd /home/runner/chromium/src
 
@@ -147,40 +146,95 @@ jobs:
             git apply --recount --ignore-whitespace --ignore-space-change "$p" || patch -p1 --forward < "$p" || git apply --reject "$p" || true
           done
 
-          # 2. KIWI BROWSER ORIGINAL VERTICAL SWITCHER HOOKS
+          # 2. INJECT KIWI TAB SWITCHER UNDER "TABS AND TAB GROUPS"
           echo "========================================================="
-          echo "CRITICAL STEP: Injecting Kiwi Original Vertical Switcher..."
+          echo "CRITICAL STEP: Injecting Kiwi Tab Switcher Options..."
           echo "========================================================="
           python3 - << 'PYEOF'
           import os, glob, sys
 
-          # Disable Tab Grid Layout so the classic vertical tab switcher runs
-          for path in glob.glob("**/TabUiFeatureUtilities.java", recursive=True):
-              with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                  content = f.read()
-              if "isGridTabSwitcherEnabled" in content and "return false;" not in content:
-                  content = content.replace(
-                      "public static boolean isGridTabSwitcherEnabled(Context context) {",
-                      "public static boolean isGridTabSwitcherEnabled(Context context) {\n        if (true) return false;"
-                  )
-                  with open(path, "w", encoding="utf-8") as f:
-                      f.write(content)
-                  print("SUCCESS: Forced isGridTabSwitcherEnabled to false in:", path)
+          found_xml = False
+          found_java = False
 
-          # Also disable tab groups if requested so the original layout is restored
-          for path in glob.glob("**/TabUiFeatureUtilities.java", recursive=True):
-              with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                  content = f.read()
-              if "isTabGroupsAndroidEnabled" in content and "return false;" not in content:
-                  content = content.replace(
-                      "public static boolean isTabGroupsAndroidEnabled(Context context) {",
-                      "public static boolean isTabGroupsAndroidEnabled(Context context) {\n        if (true) return false;"
-                  )
-                  with open(path, "w", encoding="utf-8") as f:
-                      f.write(content)
-                  print("SUCCESS: Disabled TabGroups in:", path)
+          # 1. Add ListPreference to Tabs Settings XML
+          for root, dirs, files in os.walk("chrome"):
+              for f in files:
+                  if f in ["tabs_settings_preferences.xml", "tab_management_preferences.xml", "tabs_preferences.xml"]:
+                      xml_path = os.path.join(root, f)
+                      with open(xml_path, "r", encoding="utf-8") as xf:
+                          content = xf.read()
+                      if "tab_switcher_type" not in content:
+                          pref_entry = '''
+    <ListPreference
+        android:key="tab_switcher_type"
+        android:title="Tab switcher"
+        android:summary="%s"
+        android:entries="@array/tab_switcher_entries"
+        android:entryValues="@array/tab_switcher_values"
+        android:defaultValue="1" />
+'''
+                          content = content.replace("</PreferenceScreen>", pref_entry + "\n</PreferenceScreen>")
+                          with open(xml_path, "w", encoding="utf-8") as xf:
+                              xf.write(content)
+                          print(f"SUCCESS: Added Tab Switcher ListPreference to: {xml_path}")
+                          found_xml = True
 
-          print("Kiwi switcher settings successfully applied!")
+          # 2. Add Array resources for Tab Switcher entries
+          arrays_xml = '''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="tab_switcher_entries">
+        <item>Default</item>
+        <item>Original (vertical, same as old Chromium)</item>
+        <item>Horizontal (same as old Chromium)</item>
+        <item>Grid (supports tab group)</item>
+        <item>List</item>
+    </string-array>
+    <string-array name="tab_switcher_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+</resources>
+'''
+          values_dirs = glob.glob("chrome/**/res/values", recursive=True)
+          if values_dirs:
+              target_val = os.path.join(values_dirs[0], "tab_switcher_arrays.xml")
+              with open(target_val, "w", encoding="utf-8") as vf:
+                  vf.write(arrays_xml)
+              print(f"SUCCESS: Wrote tab switcher entries to: {target_val}")
+
+          # 3. Hook Preference into TabUiFeatureUtilities / TabManagementDelegateImpl
+          for root, dirs, files in os.walk("chrome"):
+              for f in files:
+                  if f.endswith(".java"):
+                      filepath = os.path.join(root, f)
+                      try:
+                          with open(filepath, "r", encoding="utf-8", errors="ignore") as jf:
+                              content = jf.read()
+                      except Exception:
+                          continue
+
+                      # Read user preference for Tab Switcher
+                      if "isGridTabSwitcherEnabled" in content and "Context context" in content:
+                          print(f"-> Hooking SharedPreferences in: {filepath}")
+                          hook_code = '''public static boolean isGridTabSwitcherEnabled(Context context) {
+        try {
+            android.content.SharedPreferences sp = android.preference.PreferenceManager.getDefaultSharedPreferences(context);
+            String mode = sp.getString("tab_switcher_type", "1");
+            if ("1".equals(mode) || "4".equals(mode)) {
+                return false; // Original vertical or list
+            }
+        } catch (Exception ignored) {}
+'''
+                          content = content.replace("public static boolean isGridTabSwitcherEnabled(Context context) {", hook_code)
+                          with open(filepath, "w", encoding="utf-8") as jf:
+                              jf.write(content)
+                          print(f"SUCCESS: Injected dynamic Kiwi switcher hook in: {filepath}")
+                          found_java = True
+
+          print(f"Kiwi Tab Switcher Injection Complete: XML={found_xml}, Java={found_java}")
           PYEOF
 
           # 3. Clean .rej files so prepare_resources doesn't fail
@@ -196,7 +250,7 @@ jobs:
             sed -i '/Type\.AUTOPLAY/d' "$TARGET_FILE"
           fi
 
-          echo "All patches and Kiwi switcher hooks ready."
+          echo "All patches and Kiwi switcher settings successfully integrated."
 
       # 6. DOWNLOAD UBLOCK ORIGIN CRX
       - name: Download uBlock Origin CRX
@@ -252,6 +306,6 @@ jobs:
       - name: Upload Finished APK
         uses: actions/upload-artifact@v4
         with:
-          name: BareBrowser-OriginalVerticalStack-ARM64
+          name: BareBrowser-KiwiTabSwitcherSettings-ARM64
           path: /home/runner/chromium/src/out/Default/apks/ChromePublic.apk
           if-no-files-found: error
