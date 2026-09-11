@@ -91,7 +91,7 @@ jobs:
           cd src
           /home/runner/depot_tools/gclient runhooks -j 4
 
-      # 5. APPLY ALL PATCHES & CLEAN UP .rej FILES
+      # 5. APPLY ALL PATCHES & POST-PATCH COMPATIBILITY FIXES
       - name: Apply Patches
         run: |
           cd /home/runner/chromium/src
@@ -105,7 +105,17 @@ jobs:
           find chrome/ -name "*.orig" -delete
           find . -name "*.rej" -delete
           find . -name "*.orig" -delete
-          echo "Patch cleanup complete."
+
+          # FIX: Remove obsolete Type.AUTOPLAY reference in SiteSettingsCategory.java
+          echo "Fixing obsolete SiteSettingsCategory AUTOPLAY references..."
+          TARGET_FILE="components/browser_ui/site_settings/android/java/src/org/chromium/components/browser_ui/site_settings/SiteSettingsCategory.java"
+          if [ -f "$TARGET_FILE" ]; then
+            sed -i '/Type\.AUTOPLAY,/d' "$TARGET_FILE"
+            sed -i '/Type\.AUTOPLAY/d' "$TARGET_FILE"
+            echo "Successfully sanitized $TARGET_FILE"
+          fi
+
+          echo "Patch cleanup and compatibility fixes complete."
 
       # 6. DOWNLOAD UBLOCK ORIGIN CRX
       - name: Download uBlock Origin CRX
@@ -146,7 +156,7 @@ jobs:
           restore-keys: |
             chromium-arm64-obj-
 
-      # 9. COMPILE THE ARM64 APK (Resumes from where it left off)
+      # 9. COMPILE THE ARM64 APK (Resumes from saved progress)
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
