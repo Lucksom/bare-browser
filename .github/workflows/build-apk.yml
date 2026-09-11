@@ -64,17 +64,16 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq git curl python3 build-essential openjdk-17-jdk ninja-build patch zstd
 
-      # 3. SETUP DEPOT TOOLS
+      # 3. SETUP DEPOT TOOLS (CLEAN PUBLIC RUNNER SETUP)
       - name: Setup Depot Tools
         run: |
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /home/runner/depot_tools
           echo "/home/runner/depot_tools" >> $GITHUB_PATH
+          echo "DEPOT_TOOLS_UPDATE=0" >> $GITHUB_ENV
+          echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
           mkdir -p ~/.config
           touch /home/runner/depot_tools/metrics.cfg
           echo "opt-out" > /home/runner/depot_tools/metrics.cfg
-          echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
-          export DEPOT_TOOLS_METRICS=0
-          /home/runner/depot_tools/ensure_bootstrap || /home/runner/depot_tools/update_depot_tools
 
       # 4. DOWNLOAD & EXTRACT OFFICIAL BARE BASE ARCHIVE
       - name: Download and Extract Base Archive
