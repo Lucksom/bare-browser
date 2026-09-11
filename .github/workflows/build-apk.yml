@@ -1,4 +1,4 @@
-name: 2. Build Bare Browser APK (Fast with Base Archive)
+name: Build Bare Browser APK (Fast Base)
 
 on:
   workflow_dispatch:
@@ -7,75 +7,53 @@ jobs:
   validate-patches:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Pre-Validate Patches Syntax
         run: |
-          echo "========================================================="
           echo "VALIDATING BASE PATCH SYNTAX"
-          echo "========================================================="
           rm -f $GITHUB_WORKSPACE/patches/*0100* || true
-
           FAILED=false
           for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" | sort); do
-            echo -n "Validating $(basename $p)... "
             ERR=$(git apply --stat "$p" 2>&1 || true)
             if echo "$ERR" | grep -q "corrupt patch"; then
-              echo "FAILED (CORRUPT)!"
-              echo "$ERR"
+              echo "FAILED (CORRUPT): $(basename $p)"
               FAILED=true
-            else
-              echo "OK"
             fi
           done
-
           if [ "$FAILED" = "true" ]; then
-            echo "ERROR: One or more base patches are corrupt!"
             exit 1
           fi
-
-          echo "ALL BASE PATCHES VALID! Proceeding to Build..."
+          echo "ALL BASE PATCHES VALID!"
 
   build:
     needs: validate-patches
     runs-on: ubuntu-24.04
     timeout-minutes: 360
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. MAXIMIZE RUNNER DISK SPACE & 10GB SWAP
-      - name: Maximize Runner Disk Space & Setup Swap
+      - name: Setup System Resources
         run: |
-          echo "=== System Hardware Info ==="
-          nproc
-          free -h
-          df -h /
-
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
           sudo docker image prune --all --force || true
           sudo apt-get clean
           sudo apt-get autoremove -y -qq
-
           sudo swapoff -a || true
           sudo rm -f /swapfile /mnt/swapfile || true
           sudo fallocate -l 10G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=10240
           sudo chmod 600 /mnt/swapfile
           sudo mkswap /mnt/swapfile
           sudo swapon /mnt/swapfile
-          free -h
 
-      # 2. INSTALL PREREQUISITES
-      - name: Install Build Prerequisites
+      - name: Install Prerequisites
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq git curl python3 build-essential openjdk-17-jdk ninja-build patch zstd
 
-      # 3. SETUP & BOOTSTRAP DEPOT TOOLS
       - name: Setup Depot Tools
         run: |
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /home/runner/depot_tools
@@ -84,125 +62,108 @@ jobs:
           touch /home/runner/depot_tools/metrics.cfg
           echo "opt-out" > /home/runner/depot_tools/metrics.cfg
           echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
-
-          # Initialize depot_tools Python and toolchain binaries
           export DEPOT_TOOLS_METRICS=0
           /home/runner/depot_tools/ensure_bootstrap || /home/runner/depot_tools/update_depot_tools
 
-      # 4. DOWNLOAD & FAST MULTI-CORE EXTRACTION
-      - name: Download Pre-Synced Chromium Base
+      - name: Download and Extract Base Archive
         run: |
           mkdir -p /home/runner/chromium
           cd /home/runner/chromium
-
-          echo "Downloading split Chromium base parts from GitHub Release..."
           gh release download chromium-bare-base -p "chromium-bare-base.tar.zst.part_*" --repo ${{ github.repository }}
-
-          echo "Decompressing with all CPU cores (-T0)..."
           cat chromium-bare-base.tar.zst.part_* | zstd -d -T0 | tar -xf -
           rm -f chromium-bare-base.tar.zst.part_*
-          echo "Chromium source extracted and ready in /home/runner/chromium/src!"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5. APPLY PATCHES & INJECT KIWI TAB SWITCHER
-      - name: Apply Patches & Inject Tab Switcher
+      - name: Apply Patches
         run: |
           cd /home/runner/chromium/src
-
-          # Clean any stale unlisted files from prior attempts
           find . -name "tab_switcher_arrays.xml" -delete || true
-
           for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" ! -name "*0100*" | sort); do
-            echo "Applying patch: $p"
             git apply --3way --ignore-whitespace "$p" || git apply --recount --ignore-space-change "$p" || patch -p1 --forward < "$p" || true
           done
 
-          # Python injector for Kiwi Tab Switcher Settings under "Tabs and tab groups"
-          python3 - << 'PYEOF'
+      - name: Inject Kiwi Tab Switcher Settings
+        run: |
+          cd /home/runner/chromium/src
+          python3 -c '
           import os, glob
 
-          # 1. Add ListPreference to Tabs Settings XML
+          # 1. Inject Preference into Tabs XML
           for root, dirs, files in os.walk("chrome"):
               for f in files:
                   if f in ["tabs_settings_preferences.xml", "tab_management_preferences.xml", "tabs_preferences.xml"]:
-                      xml_path = os.path.join(root, f)
-                      with open(xml_path, "r", encoding="utf-8") as xf:
-                          content = xf.read()
-                      if "tab_switcher_type" not in content:
-                          pref_entry = '\n    <ListPreference android:key="tab_switcher_type" android:title="Tab switcher" android:summary="%s" android:entries="@array/tab_switcher_entries" android:entryValues="@array/tab_switcher_values" android:defaultValue="1" />\n'
-                          content = content.replace("</PreferenceScreen>", pref_entry + "</PreferenceScreen>")
-                          with open(xml_path, "w", encoding="utf-8") as xf:
-                              xf.write(content)
-                          print(f"Added Tab Switcher preference to: {xml_path}")
+                      p = os.path.join(root, f)
+                      with open(p, "r", encoding="utf-8") as xf:
+                          c = xf.read()
+                      if "tab_switcher_type" not in c:
+                          tag = "\n    <ListPreference android:key=\"tab_switcher_type\" android:title=\"Tab switcher\" android:summary=\"%s\" android:entries=\"@array/tab_switcher_entries\" android:entryValues=\"@array/tab_switcher_values\" android:defaultValue=\"1\" />\n"
+                          c = c.replace("</PreferenceScreen>", tag + "</PreferenceScreen>")
+                          with open(p, "w", encoding="utf-8") as xf:
+                              xf.write(c)
 
-          # 2. INJECT INTO EXISTING REGISTERED XML (Fixes prepare_resources.py error)
-          arrays_snippet = '''
-    <string-array name="tab_switcher_entries">
-        <item>Default</item>
-        <item>Original (vertical, same as old Chromium)</item>
-        <item>Horizontal (same as old Chromium)</item>
-        <item>Grid (supports tab group)</item>
-        <item>List</item>
-    </string-array>
-    <string-array name="tab_switcher_values">
-        <item>0</item>
-        <item>1</item>
-        <item>2</item>
-        <item>3</item>
-        <item>4</item>
-    </string-array>
-</resources>'''
+          # 2. Inject Arrays into existing registered values/arrays.xml or strings.xml
+          arrays_data = """
+              <string-array name="tab_switcher_entries">
+                  <item>Default</item>
+                  <item>Original (vertical, same as old Chromium)</item>
+                  <item>Horizontal (same as old Chromium)</item>
+                  <item>Grid (supports tab group)</item>
+                  <item>List</item>
+              </string-array>
+              <string-array name="tab_switcher_values">
+                  <item>0</item>
+                  <item>1</item>
+                  <item>2</item>
+                  <item>3</item>
+                  <item>4</item>
+              </string-array>
+          </resources>"""
 
-          target_arrays_xml = "chrome/android/java/res/values/arrays.xml"
-          if os.path.exists(target_arrays_xml):
-              with open(target_arrays_xml, "r", encoding="utf-8") as af:
-                  content = af.read()
-              if "tab_switcher_entries" not in content:
-                  content = content.replace("</resources>", arrays_snippet)
-                  with open(target_arrays_xml, "w", encoding="utf-8") as af:
-                      af.write(content)
-                  print(f"SUCCESS: Injected tab_switcher arrays into existing: {target_arrays_xml}")
+          target_arr = "chrome/android/java/res/values/arrays.xml"
+          if os.path.exists(target_arr):
+              with open(target_arr, "r", encoding="utf-8") as f:
+                  txt = f.read()
+              if "tab_switcher_entries" not in txt:
+                  txt = txt.replace("</resources>", arrays_data)
+                  with open(target_arr, "w", encoding="utf-8") as f:
+                      f.write(txt)
           else:
-              for s_file in glob.glob("chrome/**/res/values/strings.xml", recursive=True):
-                  with open(s_file, "r", encoding="utf-8") as sf:
-                      s_content = sf.read()
-                  if "tab_switcher_entries" not in s_content:
-                      s_content = s_content.replace("</resources>", arrays_snippet)
-                      with open(s_file, "w", encoding="utf-8") as sf:
-                          sf.write(s_content)
-                      print(f"SUCCESS: Injected tab_switcher arrays into: {s_file}")
+              for sf in glob.glob("chrome/**/res/values/strings.xml", recursive=True):
+                  with open(sf, "r", encoding="utf-8") as f:
+                      txt = f.read()
+                  if "tab_switcher_entries" not in txt:
+                      txt = txt.replace("</resources>", arrays_data)
+                      with open(sf, "w", encoding="utf-8") as f:
+                          f.write(txt)
                       break
 
           # 3. Hook Preference in Java
           for root, dirs, files in os.walk("chrome"):
               for f in files:
                   if f.endswith(".java"):
-                      filepath = os.path.join(root, f)
+                      jp = os.path.join(root, f)
                       try:
-                          with open(filepath, "r", encoding="utf-8", errors="ignore") as jf:
-                              content = jf.read()
+                          with open(jp, "r", encoding="utf-8", errors="ignore") as f:
+                              jc = f.read()
                       except Exception:
                           continue
-
-                      if "isGridTabSwitcherEnabled" in content and "Context context" in content:
-                          hook_code = '''public static boolean isGridTabSwitcherEnabled(Context context) {
+                      if "isGridTabSwitcherEnabled" in jc and "Context context" in jc:
+                          hook = """public static boolean isGridTabSwitcherEnabled(Context context) {
                   try {
                       android.content.SharedPreferences sp = android.preference.PreferenceManager.getDefaultSharedPreferences(context);
                       String mode = sp.getString("tab_switcher_type", "1");
                       if ("1".equals(mode) || "4".equals(mode)) return false;
                   } catch (Exception ignored) {}
-          '''
-                          content = content.replace("public static boolean isGridTabSwitcherEnabled(Context context) {", hook_code)
-                          with open(filepath, "w", encoding="utf-8") as jf:
-                              jf.write(content)
-                          print(f"Hooked tab switcher in: {filepath}")
-          PYEOF
-
-          find chrome/ -name "*.rej" -delete
-          find chrome/ -name "*.orig" -delete
-          find . -name "*.rej" -delete
-          find . -name "*.orig" -delete
+          """
+                          jc = jc.replace("public static boolean isGridTabSwitcherEnabled(Context context) {", hook)
+                          with open(jp, "w", encoding="utf-8") as f:
+                              f.write(jc)
+          '
+          find chrome/ -name "*.rej" -delete || true
+          find chrome/ -name "*.orig" -delete || true
+          find . -name "*.rej" -delete || true
+          find . -name "*.orig" -delete || true
 
           TARGET_FILE="components/browser_ui/site_settings/android/java/src/org/chromium/components/browser_ui/site_settings/SiteSettingsCategory.java"
           if [ -f "$TARGET_FILE" ]; then
@@ -210,14 +171,12 @@ jobs:
             sed -i '/Type\.AUTOPLAY/d' "$TARGET_FILE"
           fi
 
-      # 6. UBLOCK ORIGIN
       - name: Download uBlock Origin CRX
         run: |
           mkdir -p /home/runner/chromium/src/chrome/browser/resources/bare
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.1b5/uBlock0_1.74.1b5.chromium.crx
 
-      # 7. CONFIGURE GN
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -239,17 +198,14 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Default
 
-      # 8. COMPILE APK USING ALL CPU CORES
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
           CORES=$(nproc)
-          echo "Compiling on all $CORES CPU cores..."
           /home/runner/depot_tools/autoninja -C out/Default -j $CORES chrome_public_apk
 
-      # 8.5 PRINT LOGS ON FAILURE
-      - name: Print Detailed Failure Logs
+      - name: Print Failure Logs
         if: failure()
         run: |
           cd /home/runner/chromium/src
@@ -260,7 +216,6 @@ jobs:
             tail -n 120 out/Default/siso_output
           fi
 
-      # 9. UPLOAD FINISHED APK
       - name: Upload Finished APK
         uses: actions/upload-artifact@v4
         with:
