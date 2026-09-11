@@ -3,6 +3,9 @@ name: 2. Build Bare Browser APK (Official Bare Base - Ultra Fast)
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   validate-patches:
     runs-on: ubuntu-24.04
@@ -59,7 +62,6 @@ jobs:
           sudo swapon /mnt/swapfile
           free -h
 
-          # Set compiler temp directory to RAM-disk for 10x faster I/O
           mkdir -p /dev/shm/tmp
           chmod 1777 /dev/shm/tmp
           echo "TMPDIR=/dev/shm/tmp" >> $GITHUB_ENV
@@ -196,7 +198,7 @@ jobs:
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.73.0/uBlock0_1.73.0.chromium.crx
 
-      # 8. CONFIGURE GN (ULTRA-OPTIMIZED FOR MAXIMUM BUILD SPEED)
+      # 8. CONFIGURE GN
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -225,7 +227,7 @@ jobs:
           proprietary_codecs = true
           ffmpeg_branding = "Chrome"
 
-          # Bypass heavy unused desktop/VR engines to reduce compile targets
+          # Bypass heavy unused engines to accelerate compile
           enable_nacl = false
           enable_vr = false
           enable_remoting = false
@@ -254,7 +256,7 @@ jobs:
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
           CORES=$(nproc)
-          echo "Starting build on all $CORES CPU cores in out/Bare..."
+          echo "Starting compilation on all $CORES CPU cores in out/Bare..."
           /home/runner/depot_tools/autoninja -C out/Bare -j $CORES chrome_public_apk
 
       # 9.5 PRINT FAILURE LOGS ON ERROR
@@ -269,10 +271,26 @@ jobs:
             tail -n 120 out/Bare/siso_output
           fi
 
-      # 10. UPLOAD FINISHED APK
-      - name: Upload Finished APK
-        uses: actions/upload-artifact@v4
+      # 10. PREPARE RELEASE ARTIFACTS
+      - name: Prepare Release APK
+        run: |
+          mkdir -p /home/runner/output_apk
+          cp /home/runner/chromium/src/out/Bare/apks/ChromePublic.apk /home/runner/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
+          ls -lh /home/runner/output_apk/
+
+      # 11. PUBLISH DIRECTLY TO GITHUB RELEASES
+      - name: Publish APK to GitHub Releases
+        uses: softprops/action-gh-release@v2
         with:
-          name: BareBrowser-1.0.0-alpha.3-KiwiSwitcher-ARM64
-          path: /home/runner/chromium/src/out/Bare/apks/ChromePublic.apk
-          if-no-files-found: error
+          tag_name: v1.0.0-alpha.3-kiwi
+          name: "Bare Browser v1.0.0 (with Kiwi Tab Switcher)"
+          body: |
+            ### 🚀 Bare Browser v1.0.0-alpha.3 (ARM64)
+            - **Kiwi Tab Switcher**: Select between Default, Original (Vertical), Horizontal, Grid, and List in Settings -> Tabs and tab groups!
+            - **uBlock Origin 1.73.0 Built-in**: Full MV2 extension adblocking support.
+            - **Optimized ARM64 Build**: Compiled for high performance on Android 10+.
+          files: /home/runner/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
