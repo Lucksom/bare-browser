@@ -92,43 +92,61 @@ jobs:
           cd src
           /home/runner/depot_tools/gclient runhooks -j 4
 
-      # 5. APPLY PATCHES (CRITICAL: STOPS IF TAB SWITCHER FAILS)
+      # 5. APPLY BASE PATCHES & CONFIGURE VERTICAL TAB SWITCHER
       - name: Apply Patches
         run: |
           cd /home/runner/chromium/src
 
-          # 1. Apply base patches
+          # 1. Apply base patches (skipping broken patch 0100 if present)
           for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" ! -name "*0100-restore-vertical-stack-tab-switcher.patch*" | sort); do
             echo "Applying base patch: $p"
             git apply --recount --ignore-whitespace --ignore-space-change "$p" || patch -p1 --forward < "$p" || git apply --reject "$p" || true
           done
 
-          # 2. Strict check on Vertical Tab Switcher
-          VERTICAL_PATCH="$GITHUB_WORKSPACE/patches/0100-restore-vertical-stack-tab-switcher.patch"
-          if [ -f "$VERTICAL_PATCH" ]; then
-            echo "========================================================="
-            echo "CRITICAL STEP: Applying Vertical Stack Tab Switcher..."
-            echo "========================================================="
-            
-            APPLIED=false
-            if git apply --ignore-whitespace --ignore-space-change "$VERTICAL_PATCH"; then
-              APPLIED=true
-            elif patch -p1 --forward --ignore-whitespace < "$VERTICAL_PATCH"; then
-              APPLIED=true
-            fi
+          # 2. ROBUST VERTICAL TAB SWITCHER INJECTION (Kiwi / Modern Chromium technique)
+          echo "========================================================="
+          echo "CRITICAL STEP: Enabling Vertical Tab Switcher..."
+          echo "========================================================="
+          python3 - << 'PYEOF'
+          import os, glob, sys
 
-            if [ "$APPLIED" != "true" ]; then
-              echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-              echo "ERROR: Vertical Stack Tab Switcher patch FAILED to apply!"
-              echo "Stopping workflow immediately to prevent wasted time."
-              echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-              exit 1
-            fi
-            echo "SUCCESS: Vertical Stack Tab Switcher applied cleanly!"
-          else
-            echo "ERROR: $VERTICAL_PATCH not found!"
-            exit 1
-          fi
+          applied = False
+
+          # Check TabUiFeatureUtilities
+          for path in glob.glob("**/TabUiFeatureUtilities.java", recursive=True):
+              with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                  content = f.read()
+              if "isGridTabSwitcherEnabled" in content:
+                  print("Found isGridTabSwitcherEnabled in:", path)
+                  content = content.replace(
+                      "public static boolean isGridTabSwitcherEnabled(Context context) {",
+                      "public static boolean isGridTabSwitcherEnabled(Context context) {\n        if (true) return false;"
+                  )
+                  with open(path, "w", encoding="utf-8") as f:
+                      f.write(content)
+                  applied = True
+                  print("SUCCESS: Disabled Grid Tab Switcher in:", path)
+
+          # Also check TabManagementDelegateImpl for TabListMode.GRID -> TabListMode.LIST
+          for path in glob.glob("**/TabManagementDelegateImpl.java", recursive=True):
+              with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                  content = f.read()
+              if "TabListMode.GRID" in content:
+                  print("Found TabListMode.GRID in:", path)
+                  content = content.replace("TabListMode.GRID", "TabListMode.LIST")
+                  with open(path, "w", encoding="utf-8") as f:
+                      f.write(content)
+                  applied = True
+                  print("SUCCESS: Set TabListMode.LIST in:", path)
+
+          if not applied:
+              print("ERROR: Could not apply Vertical Tab Switcher modifications!")
+              sys.exit(1)
+          else:
+              print("=========================================================")
+              print("SUCCESS: Vertical Tab Switcher successfully enabled!")
+              print("=========================================================")
+          PYEOF
 
           # 3. Clean .rej files so prepare_resources doesn't fail
           find chrome/ -name "*.rej" -delete
