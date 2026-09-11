@@ -1,4 +1,4 @@
-name: "Build Bare Browser APK"
+name: 1. "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
@@ -39,10 +39,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. SETUP SYSTEM RESOURCES & ACCELERATION (FIXED 60GB TMPDIR)
+      # 1. SETUP 16GB BULLETPROOF SWAP & HIGH SWAPPINESS
       - name: Setup System Resources & Acceleration
         run: |
-          echo "=== Freeing Runner Disk Space ==="
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
           sudo docker image prune --all --force || true
           sudo apt-get clean
@@ -50,12 +49,15 @@ jobs:
 
           sudo swapoff -a || true
           sudo rm -f /swapfile /mnt/swapfile || true
-          sudo fallocate -l 10G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=10240
-          sudo chmod 600 /mnt/swapfile
-          sudo mkswap /mnt/swapfile
-          sudo swapon /mnt/swapfile
+          sudo dd if=/dev/zero of=/swapfile bs=1M count=16384 status=progress
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          
+          sudo sysctl vm.swappiness=100
+          sudo sysctl vm.vfs_cache_pressure=50
+          free -h
 
-          # Use /mnt/tmp which has 60+ GB of fast SSD space (replaces tiny /dev/shm)
           sudo mkdir -p /mnt/tmp
           sudo chmod 1777 /mnt/tmp
           echo "TMPDIR=/mnt/tmp" >> $GITHUB_ENV
@@ -182,7 +184,7 @@ jobs:
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. CONFIGURE GN
+      # 8. CONFIGURE GN (OFFICIAL ARGS + LEAN MEMORY)
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -201,6 +203,10 @@ jobs:
 
           # Pure 64-bit ARM64 compilation
           build_apk_secondary_abi = false
+
+          # Memory stability: Standard Ninja, 1 concurrent link
+          use_siso = false
+          concurrent_links = 1
 
           # Fast compilation flags
           symbol_level = 0
@@ -241,27 +247,23 @@ jobs:
           chrome_public_manifest_package = "org.barebrowser"
           android_override_version_code = "801000065"
           android_override_version_name = "1.0.0-alpha.3"
-          concurrent_links = 1
           EOF
           /home/runner/depot_tools/gn gen out/Bare
 
-      # 9. COMPILE APK (4-THREAD CONCURRENCY)
+      # 9. COMPILE APK (NATIVE NINJA -J 3 - ROCK SOLID STABILITY)
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
-          /home/runner/depot_tools/autoninja -C out/Bare -j 4 chrome_public_apk
+          /home/runner/depot_tools/ninja -C out/Bare -j 3 chrome_public_apk
 
       # 9.5 PRINT FAILURE LOGS ON ERROR
       - name: Print Failure Logs
         if: failure()
         run: |
           cd /home/runner/chromium/src
-          if [ -f out/Bare/siso_failed_commands.sh ]; then
-            cat out/Bare/siso_failed_commands.sh
-          fi
-          if [ -f out/Bare/siso_output ]; then
-            tail -n 120 out/Bare/siso_output
+          if [ -f out/Bare/ninja_log ]; then
+            tail -n 120 out/Bare/ninja_log
           fi
 
       # 10. PREPARE RELEASE ARTIFACTS
