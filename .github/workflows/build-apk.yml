@@ -62,7 +62,7 @@ jobs:
           sudo swapon /mnt/swapfile
           free -h
 
-          # Set compiler temporary directory to pure RAM disk (10,000 MB/s speed)
+          # Compiler temporary directory on RAM disk (10,000 MB/s speed)
           mkdir -p /dev/shm/tmp
           chmod 1777 /dev/shm/tmp
           echo "TMPDIR=/dev/shm/tmp" >> $GITHUB_ENV
@@ -109,14 +109,14 @@ jobs:
             git am --3way --ignore-whitespace "$p" || git apply --recount --ignore-space-change "$p" || patch -p1 --forward < "$p" || true
           done
 
-      # 6. INJECT KIWI TAB SWITCHER SETTINGS
+      # 6. INJECT KIWI TAB SWITCHER SETTINGS (100% GRIT-SAFE)
       - name: Inject Kiwi Tab Switcher Settings
         run: |
           cd /home/runner/chromium/src
           python3 -c '
           import os, glob
 
-          # 1. Inject Preference into Tabs Settings XML
+          # 1. Safely inject Preference into Tabs Settings XML without invalid external array references
           for root, dirs, files in os.walk("chrome"):
               for f in files:
                   if f in ["tabs_settings_preferences.xml", "tab_management_preferences.xml", "tabs_preferences.xml"]:
@@ -124,48 +124,45 @@ jobs:
                       with open(p, "r", encoding="utf-8") as xf:
                           c = xf.read()
                       if "tab_switcher_type" not in c:
-                          tag = "\n    <ListPreference android:key=\"tab_switcher_type\" android:title=\"Tab switcher\" android:summary=\"%s\" android:entries=\"@array/tab_switcher_entries\" android:entryValues=\"@array/tab_switcher_values\" android:defaultValue=\"1\" />\n"
+                          tag = """
+      <ListPreference
+          android:key="tab_switcher_type"
+          android:title="Tab switcher"
+          android:summary="%s"
+          android:defaultValue="1" />
+  """
                           c = c.replace("</PreferenceScreen>", tag + "</PreferenceScreen>")
                           with open(p, "w", encoding="utf-8") as xf:
                               xf.write(c)
 
-          # 2. Inject Arrays into existing registered values/arrays.xml or strings.xml
-          arrays_data = """
-              <string-array name="tab_switcher_entries">
-                  <item>Default</item>
-                  <item>Original (vertical, same as old Chromium)</item>
-                  <item>Horizontal (same as old Chromium)</item>
-                  <item>Grid (supports tab group)</item>
-                  <item>List</item>
-              </string-array>
-              <string-array name="tab_switcher_values">
-                  <item>0</item>
-                  <item>1</item>
-                  <item>2</item>
-                  <item>3</item>
-                  <item>4</item>
-              </string-array>
-          </resources>"""
+          # 2. Hook Java Settings fragment to populate entries directly in memory (bypasses GRIT completely!)
+          for root, dirs, files in os.walk("chrome/android"):
+              for f in files:
+                  if f in ["TabsSettings.java", "TabManagementSettings.java", "MainSettings.java"]:
+                      jp = os.path.join(root, f)
+                      try:
+                          with open(jp, "r", encoding="utf-8", errors="ignore") as jf:
+                              jc = jf.read()
+                      except Exception:
+                          continue
+                      if "onCreatePreferences" in jc and "tab_switcher_type" not in jc:
+                          populate_code = """
+          androidx.preference.ListPreference tabPref = findPreference("tab_switcher_type");
+          if (tabPref != null) {
+              CharSequence[] entries = new CharSequence[]{"Default", "Original (Vertical)", "Horizontal", "Grid", "List"};
+              CharSequence[] values = new CharSequence[]{"0", "1", "2", "3", "4"};
+              tabPref.setEntries(entries);
+              tabPref.setEntryValues(values);
+          }
+                          """
+                          idx = jc.find("super.onCreatePreferences(")
+                          if idx != -1:
+                              end_idx = jc.find(";", idx) + 1
+                              jc = jc[:end_idx] + populate_code + jc[end_idx:]
+                              with open(jp, "w", encoding="utf-8") as jf:
+                                  jf.write(jc)
 
-          target_arr = "chrome/android/java/res/values/arrays.xml"
-          if os.path.exists(target_arr):
-              with open(target_arr, "r", encoding="utf-8") as f:
-                  txt = f.read()
-              if "tab_switcher_entries" not in txt:
-                  txt = txt.replace("</resources>", arrays_data)
-                  with open(target_arr, "w", encoding="utf-8") as f:
-                      f.write(txt)
-          else:
-              for sf in glob.glob("chrome/**/res/values/strings.xml", recursive=True):
-                  with open(sf, "r", encoding="utf-8") as f:
-                      txt = f.read()
-                  if "tab_switcher_entries" not in txt:
-                      txt = txt.replace("</resources>", arrays_data)
-                      with open(sf, "w", encoding="utf-8") as f:
-                          f.write(txt)
-                      break
-
-          # 3. Hook Preference in Java
+          # 3. Hook Tab Switcher Logic in Java
           for root, dirs, files in os.walk("chrome"):
               for f in files:
                   if f.endswith(".java"):
@@ -199,7 +196,7 @@ jobs:
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.73.0/uBlock0_1.73.0.chromium.crx
 
-      # 8. CONFIGURE GN (PROFESSIONAL SPEED-OPTIMIZED ENGINE ARGS)
+      # 8. CONFIGURE GN (OFFICIAL ARGS + SPEED BOOST)
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
