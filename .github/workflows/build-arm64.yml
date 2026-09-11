@@ -1,12 +1,9 @@
-name: Build Bare Browser APK (ARM64 with Kiwi Tab Switcher Settings)
+name: Build Bare Browser APK (ARM64)
 
 on:
   workflow_dispatch:
 
 jobs:
-  # =========================================================================
-  # JOB 1: PRE-CHECK (Validates patches in ~7 seconds)
-  # =========================================================================
   validate-patches:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -20,7 +17,6 @@ jobs:
           echo "========================================================="
           echo "VALIDATING BASE PATCH SYNTAX"
           echo "========================================================="
-          
           rm -f $GITHUB_WORKSPACE/patches/*0100* || true
 
           FAILED=false
@@ -43,9 +39,6 @@ jobs:
 
           echo "ALL BASE PATCHES VALID! Proceeding to Build..."
 
-  # =========================================================================
-  # JOB 2: FULL CHROMIUM COMPILE WITH KIWI TAB SWITCHER SETTINGS
-  # =========================================================================
   build:
     needs: validate-patches
     runs-on: ubuntu-24.04
@@ -55,21 +48,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. MAXIMIZE RUNNER DISK SPACE & SETUP 10GB SWAP
+      # 1. DISK SPACE & SWAP
       - name: Maximize Runner Disk Space & Setup Swap
         run: |
-          echo "=== Initial Disk Space ==="
           df -h /
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
           sudo docker image prune --all --force || true
           sudo apt-get clean
           sudo apt-get autoremove -y -qq
 
-          # Setup 10GB swap to protect Clang from OOM
           sudo swapoff -a || true
           sudo rm -f /swapfile /mnt/swapfile || true
           sudo fallocate -l 10G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=10240
@@ -78,16 +65,13 @@ jobs:
           sudo swapon /mnt/swapfile
           free -h
 
-          echo "=== Disk Space Ready ==="
-          df -h /
-
-      # 2. INSTALL SYSTEM PREREQUISITES
+      # 2. PREREQUISITES
       - name: Install Build Prerequisites
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq git curl python3 build-essential openjdk-17-jdk ninja-build patch
 
-      # 3. SETUP DEPOT TOOLS
+      # 3. DEPOT TOOLS
       - name: Setup Depot Tools
         run: |
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /home/runner/depot_tools
@@ -97,7 +81,7 @@ jobs:
           echo "opt-out" > /home/runner/depot_tools/metrics.cfg
           echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
 
-      # 4. FAST SHALLOW FETCH CHROMIUM ANDROID
+      # 4. FETCH CHROMIUM
       - name: Fetch Shallow Chromium Android
         run: |
           mkdir -p /home/runner/chromium
@@ -128,33 +112,23 @@ jobs:
           git config --global pack.windowMemory 256m
           export DEPOT_TOOLS_METRICS=0
 
-          echo "Starting fast shallow sync..."
           /home/runner/depot_tools/gclient sync --no-history --shallow --nohooks -j 4
-
-          echo "Syncing Android toolchains & hooks..."
           cd src
           /home/runner/depot_tools/gclient runhooks -j 4
 
-      # 5. APPLY BASE PATCHES & INJECT KIWI TAB SWITCHER SETTINGS
-      - name: Apply Patches & Kiwi Tab Switcher Settings
+      # 5. APPLY PATCHES & INJECT KIWI TAB SWITCHER
+      - name: Apply Patches & Inject Tab Switcher
         run: |
           cd /home/runner/chromium/src
 
-          # 1. Apply base patches
           for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" ! -name "*0100*" | sort); do
-            echo "Applying base patch: $p"
+            echo "Applying patch: $p"
             git apply --recount --ignore-whitespace --ignore-space-change "$p" || patch -p1 --forward < "$p" || git apply --reject "$p" || true
           done
 
-          # 2. INJECT KIWI TAB SWITCHER UNDER "TABS AND TAB GROUPS"
-          echo "========================================================="
-          echo "CRITICAL STEP: Injecting Kiwi Tab Switcher Options..."
-          echo "========================================================="
+          # Python injector for Kiwi Tab Switcher Settings
           python3 - << 'PYEOF'
-          import os, glob, sys
-
-          found_xml = False
-          found_java = False
+          import os, glob
 
           # 1. Add ListPreference to Tabs Settings XML
           for root, dirs, files in os.walk("chrome"):
@@ -164,48 +138,38 @@ jobs:
                       with open(xml_path, "r", encoding="utf-8") as xf:
                           content = xf.read()
                       if "tab_switcher_type" not in content:
-                          pref_entry = '''
-    <ListPreference
-        android:key="tab_switcher_type"
-        android:title="Tab switcher"
-        android:summary="%s"
-        android:entries="@array/tab_switcher_entries"
-        android:entryValues="@array/tab_switcher_values"
-        android:defaultValue="1" />
-'''
-                          content = content.replace("</PreferenceScreen>", pref_entry + "\n</PreferenceScreen>")
+                          pref_entry = '\n    <ListPreference android:key="tab_switcher_type" android:title="Tab switcher" android:summary="%s" android:entries="@array/tab_switcher_entries" android:entryValues="@array/tab_switcher_values" android:defaultValue="1" />\n'
+                          content = content.replace("</PreferenceScreen>", pref_entry + "</PreferenceScreen>")
                           with open(xml_path, "w", encoding="utf-8") as xf:
                               xf.write(content)
-                          print(f"SUCCESS: Added Tab Switcher ListPreference to: {xml_path}")
-                          found_xml = True
+                          print(f"Added Tab Switcher preference to: {xml_path}")
 
-          # 2. Add Array resources for Tab Switcher entries
+          # 2. Add Arrays XML
           arrays_xml = '''<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string-array name="tab_switcher_entries">
-        <item>Default</item>
-        <item>Original (vertical, same as old Chromium)</item>
-        <item>Horizontal (same as old Chromium)</item>
-        <item>Grid (supports tab group)</item>
-        <item>List</item>
-    </string-array>
-    <string-array name="tab_switcher_values">
-        <item>0</item>
-        <item>1</item>
-        <item>2</item>
-        <item>3</item>
-        <item>4</item>
-    </string-array>
-</resources>
-'''
+          <resources>
+              <string-array name="tab_switcher_entries">
+                  <item>Default</item>
+                  <item>Original (vertical, same as old Chromium)</item>
+                  <item>Horizontal (same as old Chromium)</item>
+                  <item>Grid (supports tab group)</item>
+                  <item>List</item>
+              </string-array>
+              <string-array name="tab_switcher_values">
+                  <item>0</item>
+                  <item>1</item>
+                  <item>2</item>
+                  <item>3</item>
+                  <item>4</item>
+              </string-array>
+          </resources>'''
           values_dirs = glob.glob("chrome/**/res/values", recursive=True)
           if values_dirs:
               target_val = os.path.join(values_dirs[0], "tab_switcher_arrays.xml")
               with open(target_val, "w", encoding="utf-8") as vf:
                   vf.write(arrays_xml)
-              print(f"SUCCESS: Wrote tab switcher entries to: {target_val}")
+              print(f"Created tab switcher entries at: {target_val}")
 
-          # 3. Hook Preference into TabUiFeatureUtilities / TabManagementDelegateImpl
+          # 3. Hook Preference in Java
           for root, dirs, files in os.walk("chrome"):
               for f in files:
                   if f.endswith(".java"):
@@ -216,51 +180,39 @@ jobs:
                       except Exception:
                           continue
 
-                      # Read user preference for Tab Switcher
                       if "isGridTabSwitcherEnabled" in content and "Context context" in content:
-                          print(f"-> Hooking SharedPreferences in: {filepath}")
                           hook_code = '''public static boolean isGridTabSwitcherEnabled(Context context) {
-        try {
-            android.content.SharedPreferences sp = android.preference.PreferenceManager.getDefaultSharedPreferences(context);
-            String mode = sp.getString("tab_switcher_type", "1");
-            if ("1".equals(mode) || "4".equals(mode)) {
-                return false; // Original vertical or list
-            }
-        } catch (Exception ignored) {}
-'''
+                  try {
+                      android.content.SharedPreferences sp = android.preference.PreferenceManager.getDefaultSharedPreferences(context);
+                      String mode = sp.getString("tab_switcher_type", "1");
+                      if ("1".equals(mode) || "4".equals(mode)) return false;
+                  } catch (Exception ignored) {}
+          '''
                           content = content.replace("public static boolean isGridTabSwitcherEnabled(Context context) {", hook_code)
                           with open(filepath, "w", encoding="utf-8") as jf:
                               jf.write(content)
-                          print(f"SUCCESS: Injected dynamic Kiwi switcher hook in: {filepath}")
-                          found_java = True
-
-          print(f"Kiwi Tab Switcher Injection Complete: XML={found_xml}, Java={found_java}")
+                          print(f"Hooked tab switcher in: {filepath}")
           PYEOF
 
-          # 3. Clean .rej files so prepare_resources doesn't fail
           find chrome/ -name "*.rej" -delete
           find chrome/ -name "*.orig" -delete
           find . -name "*.rej" -delete
           find . -name "*.orig" -delete
 
-          # 4. Strip obsolete Type.AUTOPLAY in SiteSettingsCategory.java
           TARGET_FILE="components/browser_ui/site_settings/android/java/src/org/chromium/components/browser_ui/site_settings/SiteSettingsCategory.java"
           if [ -f "$TARGET_FILE" ]; then
             sed -i '/Type\.AUTOPLAY,/d' "$TARGET_FILE"
             sed -i '/Type\.AUTOPLAY/d' "$TARGET_FILE"
           fi
 
-          echo "All patches and Kiwi switcher settings successfully integrated."
-
-      # 6. DOWNLOAD UBLOCK ORIGIN CRX
+      # 6. UBLOCK ORIGIN
       - name: Download uBlock Origin CRX
         run: |
           mkdir -p /home/runner/chromium/src/chrome/browser/resources/bare
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.1b5/uBlock0_1.74.1b5.chromium.crx
-          echo "uBlock Origin CRX ready ($(wc -c < /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx) bytes)"
 
-      # 7. CONFIGURE OFFICIAL ARM64 GN SETTINGS
+      # 7. CONFIGURE GN
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -281,31 +233,29 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Default
 
-      # 8. COMPILE THE ARM64 APK
+      # 8. COMPILE APK
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
           /home/runner/depot_tools/autoninja -C out/Default -j 3 chrome_public_apk
 
-      # 8.5 DUMP FAILURE LOGS IF NEEDED
+      # 8.5 LOGS IF FAILED
       - name: Print Detailed Failure Logs
         if: failure()
         run: |
           cd /home/runner/chromium/src
-          echo "==================== FAILED COMMANDS ===================="
           if [ -f out/Default/siso_failed_commands.sh ]; then
             cat out/Default/siso_failed_commands.sh
           fi
-          echo "==================== SISO OUTPUT ===================="
           if [ -f out/Default/siso_output ]; then
             tail -n 120 out/Default/siso_output
           fi
 
-      # 9. UPLOAD FINISHED ARM64 APK
+      # 9. ARTIFACT
       - name: Upload Finished APK
         uses: actions/upload-artifact@v4
         with:
-          name: BareBrowser-KiwiTabSwitcherSettings-ARM64
+          name: BareBrowser-KiwiSwitcher-ARM64
           path: /home/runner/chromium/src/out/Default/apks/ChromePublic.apk
           if-no-files-found: error
