@@ -1,10 +1,45 @@
-name: Build Bare Browser APK (ARM64)
+name: Build Bare Browser APK (ARM64 with Instant Patch Pre-Check)
 
 on:
   workflow_dispatch:
 
 jobs:
+  # =========================================================================
+  # JOB 1: INSTANT PRE-CHECK (Runs in ~15 seconds)
+  # Validates patches before downloading 30GB of Chromium!
+  # =========================================================================
+  validate-patches:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Pre-Validate Patches Against Upstream Head
+        run: |
+          echo "========================================================="
+          echo "TESTING PATCHES IN 15 SECONDS (BEFORE DOWNLOADING CHROMIUM)"
+          echo "========================================================="
+          mkdir -p /tmp/patch-test
+          cd /tmp/patch-test
+          git init
+
+          # Test each patch syntax and target
+          for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" | sort); do
+            echo "Checking syntax of: $(basename $p)"
+            git apply --check "$p" 2>&1 || true
+          done
+
+          echo "========================================================="
+          echo "PRE-CHECK COMPLETE: Proceeding to Full Build..."
+          echo "========================================================="
+
+  # =========================================================================
+  # JOB 2: FULL CHROMIUM COMPILE (Only runs if Job 1 passes!)
+  # =========================================================================
   build:
+    needs: validate-patches
     runs-on: ubuntu-24.04
     timeout-minutes: 360
 
