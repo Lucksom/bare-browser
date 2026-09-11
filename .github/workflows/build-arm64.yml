@@ -97,13 +97,13 @@ jobs:
         run: |
           cd /home/runner/chromium/src
 
-          # 1. Apply base patches (skipping broken patch 0100 if present)
-          for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" ! -name "*0100-restore-vertical-stack-tab-switcher.patch*" | sort); do
+          # 1. Apply base patches (excluding broken 0100 patch)
+          for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" ! -name "*0100*" | sort); do
             echo "Applying base patch: $p"
             git apply --recount --ignore-whitespace --ignore-space-change "$p" || patch -p1 --forward < "$p" || git apply --reject "$p" || true
           done
 
-          # 2. ROBUST VERTICAL TAB SWITCHER INJECTION (Kiwi / Modern Chromium technique)
+          # 2. KIWI BROWSER / MODERN CHROMIUM VERTICAL TAB SWITCHER ENABLER
           echo "========================================================="
           echo "CRITICAL STEP: Enabling Vertical Tab Switcher..."
           echo "========================================================="
@@ -112,7 +112,7 @@ jobs:
 
           applied = False
 
-          # Check TabUiFeatureUtilities
+          # Method A: Disable Grid in TabUiFeatureUtilities
           for path in glob.glob("**/TabUiFeatureUtilities.java", recursive=True):
               with open(path, "r", encoding="utf-8", errors="ignore") as f:
                   content = f.read()
@@ -127,7 +127,7 @@ jobs:
                   applied = True
                   print("SUCCESS: Disabled Grid Tab Switcher in:", path)
 
-          # Also check TabManagementDelegateImpl for TabListMode.GRID -> TabListMode.LIST
+          # Method B: Force TabListMode.LIST in TabManagementDelegateImpl
           for path in glob.glob("**/TabManagementDelegateImpl.java", recursive=True):
               with open(path, "r", encoding="utf-8", errors="ignore") as f:
                   content = f.read()
@@ -140,12 +140,12 @@ jobs:
                   print("SUCCESS: Set TabListMode.LIST in:", path)
 
           if not applied:
-              print("ERROR: Could not apply Vertical Tab Switcher modifications!")
+              print("ERROR: Could not locate tab switcher classes to enable vertical mode!")
               sys.exit(1)
           else:
-              print("=========================================================")
-              print("SUCCESS: Vertical Tab Switcher successfully enabled!")
-              print("=========================================================")
+              print("========================================================="
+                    "\nSUCCESS: Vertical Tab Switcher successfully enabled!\n"
+                    "=========================================================")
           PYEOF
 
           # 3. Clean .rej files so prepare_resources doesn't fail
