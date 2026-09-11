@@ -1,4 +1,4 @@
-name: 2. Build Bare Browser APK (Official Bare Base - Ultra Fast)
+name: 2. name: "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
@@ -16,9 +16,7 @@ jobs:
 
       - name: Pre-Validate Patches Syntax
         run: |
-          echo "========================================================="
           echo "VALIDATING BASE PATCH SYNTAX"
-          echo "========================================================="
           rm -f $GITHUB_WORKSPACE/patches/*0100* || true
           FAILED=false
           for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" | sort); do
@@ -62,7 +60,6 @@ jobs:
           sudo swapon /mnt/swapfile
           free -h
 
-          # Compiler temporary directory on RAM disk (10,000 MB/s speed)
           mkdir -p /dev/shm/tmp
           chmod 1777 /dev/shm/tmp
           echo "TMPDIR=/dev/shm/tmp" >> $GITHUB_ENV
@@ -116,7 +113,6 @@ jobs:
           python3 -c '
           import os, glob
 
-          # 1. Safely inject Preference into Tabs Settings XML without invalid external array references
           for root, dirs, files in os.walk("chrome"):
               for f in files:
                   if f in ["tabs_settings_preferences.xml", "tab_management_preferences.xml", "tabs_preferences.xml"]:
@@ -135,7 +131,6 @@ jobs:
                           with open(p, "w", encoding="utf-8") as xf:
                               xf.write(c)
 
-          # 2. Hook Java Settings fragment to populate entries directly in memory (bypasses GRIT completely!)
           for root, dirs, files in os.walk("chrome/android"):
               for f in files:
                   if f in ["TabsSettings.java", "TabManagementSettings.java", "MainSettings.java"]:
@@ -162,7 +157,6 @@ jobs:
                               with open(jp, "w", encoding="utf-8") as jf:
                                   jf.write(jc)
 
-          # 3. Hook Tab Switcher Logic in Java
           for root, dirs, files in os.walk("chrome"):
               for f in files:
                   if f.endswith(".java"):
@@ -213,10 +207,8 @@ jobs:
           android_static_analysis = "off"
           treat_warnings_as_errors = false
 
-          # Speed optimization: Only compile pure 64-bit ARM64 (Skips compiling redundant 32-bit binaries)
           build_apk_secondary_abi = false
 
-          # Strip debug symbols and heavy whole-program optimization
           symbol_level = 0
           blink_symbol_level = 0
           v8_symbol_level = 0
@@ -226,16 +218,13 @@ jobs:
           use_remoteexec = false
           use_reclient = false
 
-          # V8 compiler acceleration
           v8_enable_debugging_features = false
           v8_enable_object_print = false
           v8_enable_verify_heap = false
 
-          # Media & Codecs
           proprietary_codecs = true
           ffmpeg_branding = "Chrome"
 
-          # Bypass heavy desktop & VR compilation targets
           enable_pdf = false
           enable_plugins = false
           enable_print_preview = false
@@ -254,10 +243,8 @@ jobs:
           enable_cardboard = false
           enable_openxr = false
 
-          # Fieldtrial config matching Bare author
           disable_fieldtrial_testing_config = true
 
-          # Official Package & Version Metadata
           chrome_public_manifest_package = "org.barebrowser"
           android_override_version_code = "801000065"
           android_override_version_name = "1.0.0-alpha.3"
@@ -265,12 +252,11 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Bare
 
-      # 9. COMPILE APK (EXPLICIT 4-THREAD CONCURRENCY TO PREVENT SWAP STALLS)
+      # 9. COMPILE APK (4-CORE CONCURRENCY)
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
-          echo "Compiling with optimal 4-core concurrency in out/Bare..."
           /home/runner/depot_tools/autoninja -C out/Bare -j 4 chrome_public_apk
 
       # 9.5 PRINT FAILURE LOGS ON ERROR
