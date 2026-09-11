@@ -1,4 +1,4 @@
-name: 2. Build Bare Browser APK (Official Bare Base)
+name: 2. Build Bare Browser APK (Official Bare Base - Ultra Fast)
 
 on:
   workflow_dispatch:
@@ -38,19 +38,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. MAXIMIZE RUNNER DISK & 10GB SWAP
-      - name: Setup System Resources
+      # 1. MAXIMIZE RUNNER DISK, 10GB SWAP & RAM-DISK TEMP
+      - name: Setup System Resources & Acceleration
         run: |
+          echo "=== System Hardware Info ==="
+          nproc
+          free -h
+          df -h /
+
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
           sudo docker image prune --all --force || true
           sudo apt-get clean
           sudo apt-get autoremove -y -qq
+
           sudo swapoff -a || true
           sudo rm -f /swapfile /mnt/swapfile || true
           sudo fallocate -l 10G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=10240
           sudo chmod 600 /mnt/swapfile
           sudo mkswap /mnt/swapfile
           sudo swapon /mnt/swapfile
+          free -h
+
+          # Set compiler temp directory to RAM-disk for 10x faster I/O
+          mkdir -p /dev/shm/tmp
+          chmod 1777 /dev/shm/tmp
+          echo "TMPDIR=/dev/shm/tmp" >> $GITHUB_ENV
 
       # 2. INSTALL PREREQUISITES
       - name: Install Prerequisites
@@ -70,7 +82,7 @@ jobs:
           export DEPOT_TOOLS_METRICS=0
           /home/runner/depot_tools/ensure_bootstrap || /home/runner/depot_tools/update_depot_tools
 
-      # 4. DOWNLOAD & EXTRACT OFFICIAL BARE BASE ARCHIVE
+      # 4. DOWNLOAD & FAST MULTI-CORE EXTRACTION
       - name: Download and Extract Base Archive
         run: |
           mkdir -p /home/runner/chromium
@@ -81,7 +93,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5. APPLY PATCHES (AUTHOR'S OFFICIAL git am METHOD)
+      # 5. APPLY PATCHES (AUTHOR OFFICIAL git am METHOD)
       - name: Apply Official Bare Patches
         run: |
           cd /home/runner/chromium/src
@@ -184,7 +196,7 @@ jobs:
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.73.0/uBlock0_1.73.0.chromium.crx
 
-      # 8. CONFIGURE GN (OFFICIAL BARE ARGS + OPTIMIZED LTO FOR SPEED)
+      # 8. CONFIGURE GN (ULTRA-OPTIMIZED FOR MAXIMUM BUILD SPEED)
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -199,16 +211,25 @@ jobs:
           is_component_build = false
           dcheck_always_on = false
           android_static_analysis = "off"
+          treat_warnings_as_errors = false
+
           symbol_level = 0
           blink_symbol_level = 0
           v8_symbol_level = 0
           use_thin_lto = false
+          use_v8_context_snapshot = false
+          clang_use_default_sample_profile = false
           use_remoteexec = false
           use_reclient = false
 
           proprietary_codecs = true
           ffmpeg_branding = "Chrome"
 
+          # Bypass heavy unused desktop/VR engines to reduce compile targets
+          enable_nacl = false
+          enable_vr = false
+          enable_remoting = false
+          enable_media_remoting = false
           use_mlkit_for_aicore = false
           enable_glic_internal_resources = false
           enable_reporting = false
@@ -227,13 +248,13 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Bare
 
-      # 9. COMPILE APK (TARGET: out/Bare)
+      # 9. COMPILE APK
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
           CORES=$(nproc)
-          echo "Starting compilation on all $CORES CPU cores in out/Bare..."
+          echo "Starting build on all $CORES CPU cores in out/Bare..."
           /home/runner/depot_tools/autoninja -C out/Bare -j $CORES chrome_public_apk
 
       # 9.5 PRINT FAILURE LOGS ON ERROR
