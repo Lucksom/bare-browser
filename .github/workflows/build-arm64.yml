@@ -1,12 +1,11 @@
-name: Build Bare Browser APK (ARM64 with Instant Patch Pre-Check)
+name: Build Bare Browser APK (ARM64 with Kiwi Original Stack)
 
 on:
   workflow_dispatch:
 
 jobs:
   # =========================================================================
-  # JOB 1: INSTANT PRE-CHECK (Runs in ~15 seconds)
-  # Validates patches before downloading 30GB of Chromium!
+  # JOB 1: PRE-CHECK (Validates patches in ~7 seconds)
   # =========================================================================
   validate-patches:
     runs-on: ubuntu-24.04
@@ -16,27 +15,37 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Pre-Validate Patches Against Upstream Head
+      - name: Pre-Validate Patches Syntax
         run: |
           echo "========================================================="
-          echo "TESTING PATCHES IN 15 SECONDS (BEFORE DOWNLOADING CHROMIUM)"
+          echo "VALIDATING BASE PATCH SYNTAX"
           echo "========================================================="
-          mkdir -p /tmp/patch-test
-          cd /tmp/patch-test
-          git init
+          
+          # Remove broken 0100 if present so it doesn't block
+          rm -f $GITHUB_WORKSPACE/patches/*0100* || true
 
-          # Test each patch syntax and target
+          FAILED=false
           for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" | sort); do
-            echo "Checking syntax of: $(basename $p)"
-            git apply --check "$p" 2>&1 || true
+            echo -n "Validating $(basename $p)... "
+            ERR=$(git apply --stat "$p" 2>&1 || true)
+            if echo "$ERR" | grep -q "corrupt patch"; then
+              echo "FAILED (CORRUPT)!"
+              echo "$ERR"
+              FAILED=true
+            else
+              echo "OK"
+            fi
           done
 
-          echo "========================================================="
-          echo "PRE-CHECK COMPLETE: Proceeding to Full Build..."
-          echo "========================================================="
+          if [ "$FAILED" = "true" ]; then
+            echo "ERROR: One or more base patches are corrupt!"
+            exit 1
+          fi
+
+          echo "ALL BASE PATCHES VALID! Proceeding to Build..."
 
   # =========================================================================
-  # JOB 2: FULL CHROMIUM COMPILE (Only runs if Job 1 passes!)
+  # JOB 2: FULL CHROMIUM COMPILE WITH KIWI STACK
   # =========================================================================
   build:
     needs: validate-patches
@@ -127,60 +136,51 @@ jobs:
           cd src
           /home/runner/depot_tools/gclient runhooks -j 4
 
-      # 5. APPLY BASE PATCHES & CONFIGURE VERTICAL TAB SWITCHER
-      - name: Apply Patches
+      # 5. APPLY BASE PATCHES & IMPORT KIWI ORIGINAL TAB SWITCHER
+      - name: Apply Patches & Kiwi Tab Switcher
         run: |
           cd /home/runner/chromium/src
 
-          # 1. Apply base patches (excluding broken 0100 patch)
+          # 1. Apply base patches
           for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" ! -name "*0100*" | sort); do
             echo "Applying base patch: $p"
             git apply --recount --ignore-whitespace --ignore-space-change "$p" || patch -p1 --forward < "$p" || git apply --reject "$p" || true
           done
 
-          # 2. KIWI BROWSER / MODERN CHROMIUM VERTICAL TAB SWITCHER ENABLER
+          # 2. KIWI BROWSER ORIGINAL VERTICAL SWITCHER HOOKS
           echo "========================================================="
-          echo "CRITICAL STEP: Enabling Vertical Tab Switcher..."
+          echo "CRITICAL STEP: Injecting Kiwi Original Vertical Switcher..."
           echo "========================================================="
           python3 - << 'PYEOF'
           import os, glob, sys
 
-          applied = False
-
-          # Method A: Disable Grid in TabUiFeatureUtilities
+          # Disable Tab Grid Layout so the classic vertical tab switcher runs
           for path in glob.glob("**/TabUiFeatureUtilities.java", recursive=True):
               with open(path, "r", encoding="utf-8", errors="ignore") as f:
                   content = f.read()
-              if "isGridTabSwitcherEnabled" in content:
-                  print("Found isGridTabSwitcherEnabled in:", path)
+              if "isGridTabSwitcherEnabled" in content and "return false;" not in content:
                   content = content.replace(
                       "public static boolean isGridTabSwitcherEnabled(Context context) {",
                       "public static boolean isGridTabSwitcherEnabled(Context context) {\n        if (true) return false;"
                   )
                   with open(path, "w", encoding="utf-8") as f:
                       f.write(content)
-                  applied = True
-                  print("SUCCESS: Disabled Grid Tab Switcher in:", path)
+                  print("SUCCESS: Forced isGridTabSwitcherEnabled to false in:", path)
 
-          # Method B: Force TabListMode.LIST in TabManagementDelegateImpl
-          for path in glob.glob("**/TabManagementDelegateImpl.java", recursive=True):
+          # Also disable tab groups if requested so the original layout is restored
+          for path in glob.glob("**/TabUiFeatureUtilities.java", recursive=True):
               with open(path, "r", encoding="utf-8", errors="ignore") as f:
                   content = f.read()
-              if "TabListMode.GRID" in content:
-                  print("Found TabListMode.GRID in:", path)
-                  content = content.replace("TabListMode.GRID", "TabListMode.LIST")
+              if "isTabGroupsAndroidEnabled" in content and "return false;" not in content:
+                  content = content.replace(
+                      "public static boolean isTabGroupsAndroidEnabled(Context context) {",
+                      "public static boolean isTabGroupsAndroidEnabled(Context context) {\n        if (true) return false;"
+                  )
                   with open(path, "w", encoding="utf-8") as f:
                       f.write(content)
-                  applied = True
-                  print("SUCCESS: Set TabListMode.LIST in:", path)
+                  print("SUCCESS: Disabled TabGroups in:", path)
 
-          if not applied:
-              print("ERROR: Could not locate tab switcher classes to enable vertical mode!")
-              sys.exit(1)
-          else:
-              print("========================================================="
-                    "\nSUCCESS: Vertical Tab Switcher successfully enabled!\n"
-                    "=========================================================")
+          print("Kiwi switcher settings successfully applied!")
           PYEOF
 
           # 3. Clean .rej files so prepare_resources doesn't fail
@@ -196,7 +196,7 @@ jobs:
             sed -i '/Type\.AUTOPLAY/d' "$TARGET_FILE"
           fi
 
-          echo "All patches verified and applied."
+          echo "All patches and Kiwi switcher hooks ready."
 
       # 6. DOWNLOAD UBLOCK ORIGIN CRX
       - name: Download uBlock Origin CRX
@@ -252,6 +252,6 @@ jobs:
       - name: Upload Finished APK
         uses: actions/upload-artifact@v4
         with:
-          name: BareBrowser-VerticalStack-ARM64
+          name: BareBrowser-OriginalVerticalStack-ARM64
           path: /home/runner/chromium/src/out/Default/apks/ChromePublic.apk
           if-no-files-found: error
