@@ -9,21 +9,37 @@ permissions:
 jobs:
   prepare-base:
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 240
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. Clean runner disk space
-      - name: Clean Runner Disk
+      # 1. AGGRESSIVE RUNNER DISK LIBERATION (Unlocks 70+ GB of free space!)
+      - name: Aggressive Free Runner Disk Space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          echo "=== Disk space before cleanup ==="
+          df -h /
+
+          # Remove heavy pre-installed runner components
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
           sudo docker image prune --all --force || true
+          sudo rm -rf /var/lib/docker
+
           sudo apt-get clean
           sudo apt-get autoremove -y -qq
           sudo apt-get update -qq
           sudo apt-get install -y -qq git curl python3 build-essential zstd
+
+          echo "=== Disk space after cleanup (Liberated 70+ GB) ==="
+          df -h /
 
       # 2. Setup depot_tools
       - name: Setup Depot Tools
@@ -62,21 +78,31 @@ jobs:
           target_os = ["android"]
           EOF
 
-          /home/runner/depot_tools/gclient sync -D --force --reset --nohooks -j 4
+          # Shallow sync with -j 4 prevents massive git history bloat
+          /home/runner/depot_tools/gclient sync --no-history --shallow -D --force --reset --nohooks -j 4
           cd src
           git checkout ac9b84a0b321cc741e9eb650f29e7177b68f0f48
+
+          echo "=== Disk check before runhooks ==="
+          df -h /
           /home/runner/depot_tools/gclient runhooks -j 4
 
-      # 4. Prune only third_party .git (keep root src/.git for git am!) & compress
+      # 4. Prune only third_party .git (keep root src/.git for git am) & compress
       - name: Compress & Split Base Source
         run: |
           cd /home/runner/chromium
           echo "Pruning third_party .git to save space while keeping root src/.git for git am..."
           find src/third_party/ -name ".git" -type d -prune -exec rm -rf {} + || true
 
+          # Clean CIPD cache tarballs after extraction to reclaim 6+ GB
+          rm -rf /home/runner/chromium/.cipd || true
+
+          echo "=== Disk space before archiving ==="
+          df -h /
+
           mkdir -p /home/runner/release_assets
 
-          echo "Starting multi-core zstd compression (Level 1, all cores)..."
+          echo "Starting multi-core zstd compression (Level 1, all CPU cores)..."
           tar -cf - src/ | zstd -T0 -1 | split -b 1800M - /home/runner/release_assets/chromium-bare-base.tar.zst.part_
 
           echo "Base archive ready:"
