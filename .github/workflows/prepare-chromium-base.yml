@@ -63,17 +63,18 @@ jobs:
           cd src
           /home/runner/depot_tools/gclient runhooks -j 4
 
-      # 4. Compress with zstd
-      - name: Compress Base Source
+      # 4. Compress with zstd & Split into <1.8GB parts (bypasses GitHub 2GB limit)
+      - name: Compress & Split Base Source
         run: |
           cd /home/runner/chromium
           find src/ -name ".git" -type d -prune -exec rm -rf {} + || true
 
-          echo "Compressing Chromium 153+ base with zstd..."
-          tar --zstd -cf /home/runner/chromium-bare-base.tar.zst src/
+          echo "Compressing Chromium source with zstd..."
+          mkdir -p /home/runner/release_assets
+          tar --zstd -cf - src/ | split -b 1800M - /home/runner/release_assets/chromium-bare-base.tar.zst.part_
 
-          echo "Archive size:"
-          ls -lh /home/runner/chromium-bare-base.tar.zst
+          echo "Generated split parts (all under 1.8GB):"
+          ls -lh /home/runner/release_assets/
 
       # 5. Upload to GitHub Releases
       - name: Publish Base Release
@@ -81,8 +82,8 @@ jobs:
         with:
           tag_name: chromium-bare-base
           name: "Chromium Android Base Archive (Bare 153+)"
-          body: "Pre-synced shallow Chromium source for fast Bare Browser APK builds."
-          files: /home/runner/chromium-bare-base.tar.zst
+          body: "Pre-synced shallow Chromium source split in parts under 2GB."
+          files: /home/runner/release_assets/chromium-bare-base.tar.zst.part_*
           draft: false
           prerelease: false
         env:
