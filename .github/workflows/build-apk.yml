@@ -1,4 +1,4 @@
-name: 2. "Build Bare Browser APK"
+name: 2."Build Bare Browser APK"
 
 on:
   workflow_dispatch:
@@ -107,7 +107,6 @@ jobs:
           cat << 'EOF' > inject_switcher.py
           import os
 
-          # 1. Inject Preference into Tabs Settings XML
           pref_tag = '\n    <ListPreference android:key="tab_switcher_type" android:title="Tab switcher" android:summary="%s" android:defaultValue="1" />\n'
           for root, dirs, files in os.walk("chrome"):
               for f in files:
@@ -120,7 +119,6 @@ jobs:
                           with open(p, "w", encoding="utf-8") as xf:
                               xf.write(c)
 
-          # 2. Hook Java Settings fragment to populate entries directly
           pop_code = """
           androidx.preference.ListPreference tabPref = findPreference("tab_switcher_type");
           if (tabPref != null) {
@@ -147,7 +145,6 @@ jobs:
                               with open(jp, "w", encoding="utf-8") as jf:
                                   jf.write(jc)
 
-          # 3. Hook Tab Switcher Logic in Java
           hook = """public static boolean isGridTabSwitcherEnabled(Context context) {
                   try {
                       android.content.SharedPreferences sp = android.preference.PreferenceManager.getDefaultSharedPreferences(context);
@@ -175,12 +172,12 @@ jobs:
           find . -name "*.rej" -delete || true
           find . -name "*.orig" -delete || true
 
-      # 7. DOWNLOAD UBLOCK ORIGIN CRX
+      # 7. DOWNLOAD UBLOCK ORIGIN CRX (1.74.0)
       - name: Download uBlock Origin CRX
         run: |
           mkdir -p /home/runner/chromium/src/chrome/browser/resources/bare
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
-            https://github.com/gorhill/uBlock/releases/download/1.73.0/uBlock0_1.73.0.chromium.crx
+            https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
       # 8. CONFIGURE GN
       - name: Configure GN Args
@@ -276,7 +273,7 @@ jobs:
         with:
           tag_name: v1.0.0-alpha.3-kiwi
           name: "Bare Browser v1.0.0 (with Kiwi Tab Switcher)"
-          body: "Bare Browser v1.0.0-alpha.3 ARM64 with Kiwi Tab Switcher and uBlock Origin 1.73.0"
+          body: "Bare Browser v1.0.0-alpha.3 ARM64 with Kiwi Tab Switcher and uBlock Origin 1.74.0"
           files: /home/runner/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
           draft: false
           prerelease: false
