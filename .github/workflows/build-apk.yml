@@ -41,7 +41,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. MAXIMIZE RUNNER DISK, 10GB SWAP & RAM-DISK TEMP
+      # 1. SETUP SYSTEM RESOURCES, 10GB SWAP & RAM-DISK TEMP
       - name: Setup System Resources & Acceleration
         run: |
           echo "=== System Hardware Info ==="
@@ -62,6 +62,7 @@ jobs:
           sudo swapon /mnt/swapfile
           free -h
 
+          # Set compiler temporary directory to pure RAM disk (10,000 MB/s speed)
           mkdir -p /dev/shm/tmp
           chmod 1777 /dev/shm/tmp
           echo "TMPDIR=/dev/shm/tmp" >> $GITHUB_ENV
@@ -84,7 +85,7 @@ jobs:
           export DEPOT_TOOLS_METRICS=0
           /home/runner/depot_tools/ensure_bootstrap || /home/runner/depot_tools/update_depot_tools
 
-      # 4. DOWNLOAD & FAST MULTI-CORE EXTRACTION
+      # 4. DOWNLOAD & EXTRACT OFFICIAL BARE BASE ARCHIVE
       - name: Download and Extract Base Archive
         run: |
           mkdir -p /home/runner/chromium
@@ -198,7 +199,7 @@ jobs:
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.73.0/uBlock0_1.73.0.chromium.crx
 
-      # 8. CONFIGURE GN
+      # 8. CONFIGURE GN (PROFESSIONAL SPEED-OPTIMIZED ENGINE ARGS)
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -215,6 +216,10 @@ jobs:
           android_static_analysis = "off"
           treat_warnings_as_errors = false
 
+          # Speed optimization: Only compile pure 64-bit ARM64 (Skips compiling redundant 32-bit binaries)
+          build_apk_secondary_abi = false
+
+          # Strip debug symbols and heavy whole-program optimization
           symbol_level = 0
           blink_symbol_level = 0
           v8_symbol_level = 0
@@ -224,10 +229,21 @@ jobs:
           use_remoteexec = false
           use_reclient = false
 
+          # V8 compiler acceleration
+          v8_enable_debugging_features = false
+          v8_enable_object_print = false
+          v8_enable_verify_heap = false
+
+          # Media & Codecs
           proprietary_codecs = true
           ffmpeg_branding = "Chrome"
 
-          # Bypass heavy unused engines to accelerate compile
+          # Bypass heavy desktop & VR compilation targets
+          enable_pdf = false
+          enable_plugins = false
+          enable_print_preview = false
+          enable_supervised_users = false
+          enable_paint_preview = false
           enable_nacl = false
           enable_vr = false
           enable_remoting = false
@@ -241,8 +257,10 @@ jobs:
           enable_cardboard = false
           enable_openxr = false
 
+          # Fieldtrial config matching Bare author
           disable_fieldtrial_testing_config = true
 
+          # Official Package & Version Metadata
           chrome_public_manifest_package = "org.barebrowser"
           android_override_version_code = "801000065"
           android_override_version_name = "1.0.0-alpha.3"
@@ -250,14 +268,13 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Bare
 
-      # 9. COMPILE APK
+      # 9. COMPILE APK (EXPLICIT 4-THREAD CONCURRENCY TO PREVENT SWAP STALLS)
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
-          CORES=$(nproc)
-          echo "Starting compilation on all $CORES CPU cores in out/Bare..."
-          /home/runner/depot_tools/autoninja -C out/Bare -j $CORES chrome_public_apk
+          echo "Compiling with optimal 4-core concurrency in out/Bare..."
+          /home/runner/depot_tools/autoninja -C out/Bare -j 4 chrome_public_apk
 
       # 9.5 PRINT FAILURE LOGS ON ERROR
       - name: Print Failure Logs
@@ -288,7 +305,7 @@ jobs:
             ### 🚀 Bare Browser v1.0.0-alpha.3 (ARM64)
             - **Kiwi Tab Switcher**: Select between Default, Original (Vertical), Horizontal, Grid, and List in Settings -> Tabs and tab groups!
             - **uBlock Origin 1.73.0 Built-in**: Full MV2 extension adblocking support.
-            - **Optimized ARM64 Build**: Compiled for high performance on Android 10+.
+            - **Optimized ARM64 Build**: Pure 64-bit performance for modern Android devices.
           files: /home/runner/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
           draft: false
           prerelease: false
