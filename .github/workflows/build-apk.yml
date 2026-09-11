@@ -48,10 +48,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. MAXIMIZE DISK SPACE & 10GB SWAP (Protects Clang multi-core from OOM)
+      # 1. MAXIMIZE RUNNER DISK SPACE & 10GB SWAP
       - name: Maximize Runner Disk Space & Setup Swap
         run: |
-          echo "=== CPU & RAM Info ==="
+          echo "=== System Hardware Info ==="
           nproc
           free -h
           df -h /
@@ -75,14 +75,21 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq git curl python3 build-essential openjdk-17-jdk ninja-build patch zstd
 
-      # 3. SETUP DEPOT TOOLS
+      # 3. SETUP & BOOTSTRAP DEPOT TOOLS
       - name: Setup Depot Tools
         run: |
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /home/runner/depot_tools
           echo "/home/runner/depot_tools" >> $GITHUB_PATH
+          mkdir -p ~/.config
+          touch /home/runner/depot_tools/metrics.cfg
+          echo "opt-out" > /home/runner/depot_tools/metrics.cfg
           echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
 
-      # 4. DOWNLOAD & FAST MULTI-CORE EXTRACTION (Uses all cores)
+          # Initialize depot_tools Python and toolchain binaries
+          export DEPOT_TOOLS_METRICS=0
+          /home/runner/depot_tools/ensure_bootstrap || /home/runner/depot_tools/update_depot_tools
+
+      # 4. DOWNLOAD & FAST MULTI-CORE EXTRACTION
       - name: Download Pre-Synced Chromium Base
         run: |
           mkdir -p /home/runner/chromium
@@ -194,7 +201,7 @@ jobs:
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.1b5/uBlock0_1.74.1b5.chromium.crx
 
-      # 7. CONFIGURE GN (Limits heavy linker to 1 process, compiles on all cores)
+      # 7. CONFIGURE GN
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -216,13 +223,13 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Default
 
-      # 8. COMPILE APK USING ALL CPU CORES (nproc)
+      # 8. COMPILE APK USING ALL CORES
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
           CORES=$(nproc)
-          echo "Starting build on all $CORES CPU cores..."
+          echo "Compiling on all $CORES CPU cores..."
           /home/runner/depot_tools/autoninja -C out/Default -j $CORES chrome_public_apk
 
       # 8.5 PRINT LOGS ON FAILURE
@@ -237,7 +244,7 @@ jobs:
             tail -n 120 out/Default/siso_output
           fi
 
-      # 9. ARTIFACT
+      # 9. UPLOAD FINISHED APK
       - name: Upload Finished APK
         uses: actions/upload-artifact@v4
         with:
