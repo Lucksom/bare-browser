@@ -1,4 +1,4 @@
-name: 1. "Build Bare Browser APK"
+name: 2. "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
@@ -39,7 +39,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. SETUP 16GB BULLETPROOF SWAP & HIGH SWAPPINESS
+      # 1. SETUP 16GB SWAP & ANTI-THRASHING MEMORY
       - name: Setup System Resources & Acceleration
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
@@ -54,7 +54,8 @@ jobs:
           sudo mkswap /swapfile
           sudo swapon /swapfile
           
-          sudo sysctl vm.swappiness=100
+          # Avoid I/O thrashing: keep active compiler memory in physical RAM
+          sudo sysctl vm.swappiness=10
           sudo sysctl vm.vfs_cache_pressure=50
           free -h
 
@@ -184,7 +185,7 @@ jobs:
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. CONFIGURE GN (OFFICIAL ARGS + LEAN MEMORY)
+      # 8. CONFIGURE GN (ELIMINATE PERFETTO & TRACING BLOAT)
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -204,9 +205,13 @@ jobs:
           # Pure 64-bit ARM64 compilation
           build_apk_secondary_abi = false
 
-          # Memory stability: Standard Ninja, 1 concurrent link
+          # Use lean native Ninja & single-link concurrency
           use_siso = false
           concurrent_links = 1
+
+          # Disable Perfetto & Tracing bloat (prevents the 17,403 lockup)
+          enable_base_tracing = false
+          use_perfetto_client_library = false
 
           # Fast compilation flags
           symbol_level = 0
@@ -250,7 +255,7 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Bare
 
-      # 9. COMPILE APK (NATIVE NINJA -J 3 - ROCK SOLID STABILITY)
+      # 9. COMPILE APK (LIVE UNBUFFERED LOGGING)
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
