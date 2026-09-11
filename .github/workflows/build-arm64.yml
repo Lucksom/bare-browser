@@ -54,7 +54,7 @@ jobs:
           echo "opt-out" > /home/runner/depot_tools/metrics.cfg
           echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
 
-      # 3.5 RESTORE CHROMIUM FETCH CACHE (Git packs & CIPD toolchains)
+      # 3.5 RESTORE CHROMIUM FETCH CACHE (CIPD toolchains & Git cache)
       - name: Restore Chromium Fetch Cache
         uses: actions/cache/restore@v4
         id: fetch-cache
@@ -62,11 +62,11 @@ jobs:
           path: |
             ~/.git-cache
             ~/.cipd
-          key: chromium-fetch-cache-${{ runner.os }}-v1
+          key: chromium-fetch-cache-${{ runner.os }}-v2
           restore-keys: |
             chromium-fetch-cache-${{ runner.os }}-
 
-      # 4. FETCH SHALLOW CHROMIUM (Uses local cache when available)
+      # 4. FETCH SHALLOW CHROMIUM (Uses GIT_CACHE_PATH)
       - name: Fetch Shallow Chromium Android
         run: |
           mkdir -p /home/runner/chromium
@@ -97,15 +97,16 @@ jobs:
           git config --global pack.threads 1
           git config --global pack.windowMemory 256m
           export DEPOT_TOOLS_METRICS=0
+          export GIT_CACHE_PATH="/home/runner/.git-cache"
 
-          echo "Syncing Chromium tree (using cache-dir)..."
-          /home/runner/depot_tools/gclient sync --no-history --shallow --nohooks --cache-dir=~/.git-cache -j 4
+          echo "Syncing Chromium tree..."
+          /home/runner/depot_tools/gclient sync --no-history --shallow --nohooks -j 4
 
           echo "Syncing Android toolchains & hooks..."
           cd src
           /home/runner/depot_tools/gclient runhooks -j 4
 
-      # 4.5 SAVE FETCH CACHE (Saves Git packs & CIPD toolchains if new)
+      # 4.5 SAVE FETCH CACHE (Saves Git cache & CIPD toolchains)
       - name: Save Chromium Fetch Cache
         uses: actions/cache/save@v4
         if: always()
@@ -113,24 +114,46 @@ jobs:
           path: |
             ~/.git-cache
             ~/.cipd
-          key: chromium-fetch-cache-${{ runner.os }}-v1
+          key: chromium-fetch-cache-${{ runner.os }}-v2
 
-      # 5. APPLY ALL PATCHES & POST-PATCH FIXES
+      # 5. APPLY PATCHES (CRITICAL: STOPS IF TAB SWITCHER FAILS)
       - name: Apply Patches
         run: |
           cd /home/runner/chromium/src
-          for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" | sort); do
-            echo "Applying patch: $p"
+
+          # 1. Apply all base patches first
+          for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" ! -name "*0100-restore-vertical-stack-tab-switcher.patch*" | sort); do
+            echo "Applying base patch: $p"
             git apply --recount --ignore-whitespace --ignore-space-change "$p" || git apply --reject "$p" || true
           done
 
-          echo "Removing any patch rejection files so resources validate..."
+          # 2. STRICT CHECK: Apply Vertical Stack Tab Switcher patch
+          VERTICAL_PATCH="$GITHUB_WORKSPACE/patches/0100-restore-vertical-stack-tab-switcher.patch"
+          if [ -f "$VERTICAL_PATCH" ]; then
+            echo "========================================================="
+            echo "CRITICAL STEP: Applying Vertical Stack Tab Switcher..."
+            echo "========================================================="
+            if ! git apply --recount --ignore-whitespace --ignore-space-change "$VERTICAL_PATCH"; then
+              echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+              echo "ERROR: Vertical Stack Tab Switcher patch FAILED to apply!"
+              echo "Stopping workflow to prevent wasted compilation time."
+              echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+              exit 1
+            fi
+            echo "SUCCESS: Vertical Stack Tab Switcher applied cleanly!"
+          else
+            echo "ERROR: $VERTICAL_PATCH not found!"
+            exit 1
+          fi
+
+          # 3. Remove .rej files from other minor patches so prepare_resources doesn't fail
+          echo "Cleaning up any .rej / .orig files from base patches..."
           find chrome/ -name "*.rej" -delete
           find chrome/ -name "*.orig" -delete
           find . -name "*.rej" -delete
           find . -name "*.orig" -delete
 
-          # FIX: Strip obsolete Type.AUTOPLAY in SiteSettingsCategory.java
+          # 4. FIX: Strip obsolete Type.AUTOPLAY in SiteSettingsCategory.java
           echo "Sanitizing SiteSettingsCategory AUTOPLAY references..."
           TARGET_FILE="components/browser_ui/site_settings/android/java/src/org/chromium/components/browser_ui/site_settings/SiteSettingsCategory.java"
           if [ -f "$TARGET_FILE" ]; then
@@ -139,7 +162,7 @@ jobs:
             echo "Successfully sanitized $TARGET_FILE"
           fi
 
-          echo "Patches applied and cleaned up successfully."
+          echo "All patches verified and ready."
 
       # 6. DOWNLOAD UBLOCK ORIGIN CRX
       - name: Download uBlock Origin CRX
