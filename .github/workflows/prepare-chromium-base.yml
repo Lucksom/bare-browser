@@ -1,4 +1,4 @@
-name: 1. Prepare & Store Chromium Base (Bare 153+)
+name: 1. Prepare & Store Chromium Base (Official Bare Base)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. Clean disk space
+      # 1. Clean runner disk space
       - name: Clean Runner Disk
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
@@ -35,8 +35,8 @@ jobs:
           echo "opt-out" > /home/runner/depot_tools/metrics.cfg
           echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
 
-      # 3. Fetch exact Chromium revision 945b51156108ba94d62f235a75379772da8ced30
-      - name: Fetch Exact Chromium Android Base
+      # 3. Fetch exact Chromium Android commit: ac9b84a0b321cc741e9eb650f29e7177b68f0f48
+      - name: Fetch Exact Chromium Base (Author Commit)
         run: |
           mkdir -p /home/runner/chromium
           cd /home/runner/chromium
@@ -45,7 +45,7 @@ jobs:
           solutions = [
             {
               "name": "src",
-              "url": "https://chromium.googlesource.com/chromium/src.git@945b51156108ba94d62f235a75379772da8ced30",
+              "url": "https://chromium.googlesource.com/chromium/src.git@ac9b84a0b321cc741e9eb650f29e7177b68f0f48",
               "deps_file": "DEPS",
               "managed": False,
               "custom_deps": {
@@ -62,16 +62,16 @@ jobs:
           target_os = ["android"]
           EOF
 
-          /home/runner/depot_tools/gclient sync --no-history --shallow --nohooks -j 4
+          /home/runner/depot_tools/gclient sync -D --force --reset --nohooks -j 4
           cd src
-          git checkout 945b51156108ba94d62f235a75379772da8ced30
+          git checkout ac9b84a0b321cc741e9eb650f29e7177b68f0f48
           /home/runner/depot_tools/gclient runhooks -j 4
 
-      # 4. Prune only third_party .git (keep root src/.git) & compress with multi-core zstd
+      # 4. Prune only third_party .git (keep root src/.git for git am!) & compress
       - name: Compress & Split Base Source
         run: |
           cd /home/runner/chromium
-          echo "Pruning third_party .git to save space while keeping root src/.git..."
+          echo "Pruning third_party .git to save space while keeping root src/.git for git am..."
           find src/third_party/ -name ".git" -type d -prune -exec rm -rf {} + || true
 
           mkdir -p /home/runner/release_assets
@@ -87,8 +87,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: chromium-bare-base
-          name: "Chromium Android Base (Revision 945b511)"
-          body: "Pinned Chromium 153 base (commit 945b51156108ba94d62f235a75379772da8ced30) with root git index preserved."
+          name: "Chromium Android Base (Commit ac9b84a)"
+          body: "Exact commit ac9b84a0b321cc741e9eb650f29e7177b68f0f48 matching official Bare Browser."
           files: /home/runner/release_assets/chromium-bare-base.tar.zst.part_*
           draft: false
           prerelease: false
