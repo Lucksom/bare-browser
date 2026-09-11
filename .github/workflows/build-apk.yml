@@ -1,4 +1,4 @@
-name: 2. Build Bare Browser APK (Author Official Specs)
+name: 2. Build Bare Browser APK (Official Bare Base)
 
 on:
   workflow_dispatch:
@@ -13,7 +13,9 @@ jobs:
 
       - name: Pre-Validate Patches Syntax
         run: |
+          echo "========================================================="
           echo "VALIDATING BASE PATCH SYNTAX"
+          echo "========================================================="
           rm -f $GITHUB_WORKSPACE/patches/*0100* || true
           FAILED=false
           for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" | sort); do
@@ -36,7 +38,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. SETUP DISK & 10GB SWAP
+      # 1. MAXIMIZE RUNNER DISK & 10GB SWAP
       - name: Setup System Resources
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
@@ -68,7 +70,7 @@ jobs:
           export DEPOT_TOOLS_METRICS=0
           /home/runner/depot_tools/ensure_bootstrap || /home/runner/depot_tools/update_depot_tools
 
-      # 4. DOWNLOAD & EXTRACT AUTHOR BASE
+      # 4. DOWNLOAD & EXTRACT OFFICIAL BARE BASE ARCHIVE
       - name: Download and Extract Base Archive
         run: |
           mkdir -p /home/runner/chromium
@@ -79,14 +81,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5. APPLY PATCHES (USING AUTHOR'S EXACT METHOD: git am)
+      # 5. APPLY PATCHES (AUTHOR'S OFFICIAL git am METHOD)
       - name: Apply Official Bare Patches
         run: |
           cd /home/runner/chromium/src
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-          echo "Applying patches with git am (Author's exact method)..."
+          echo "Applying patches using git am..."
           for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" ! -name "*0100*" | sort); do
             echo "Applying: $(basename $p)"
             git am --3way --ignore-whitespace "$p" || git apply --recount --ignore-space-change "$p" || patch -p1 --forward < "$p" || true
@@ -99,7 +101,7 @@ jobs:
           python3 -c '
           import os, glob
 
-          # 1. Inject Preference into Tabs XML
+          # 1. Inject Preference into Tabs Settings XML
           for root, dirs, files in os.walk("chrome"):
               for f in files:
                   if f in ["tabs_settings_preferences.xml", "tab_management_preferences.xml", "tabs_preferences.xml"]:
@@ -175,14 +177,14 @@ jobs:
           find . -name "*.rej" -delete || true
           find . -name "*.orig" -delete || true
 
-      # 7. DOWNLOAD UBLOCK ORIGIN (Author's exact version 1.73.0)
+      # 7. DOWNLOAD UBLOCK ORIGIN (AUTHOR SPEC: 1.73.0)
       - name: Download uBlock Origin 1.73.0
         run: |
           mkdir -p /home/runner/chromium/src/chrome/browser/resources/bare
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.73.0/uBlock0_1.73.0.chromium.crx
 
-      # 8. CONFIGURE GN (Author's EXACT official release arguments)
+      # 8. CONFIGURE GN (OFFICIAL BARE ARGS + OPTIMIZED LTO FOR SPEED)
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -191,7 +193,7 @@ jobs:
           target_os = "android"
           target_cpu = "arm64"
           is_desktop_android = true
-          is_official_build = true
+          is_official_build = false
           is_debug = false
           is_java_debug = false
           is_component_build = false
@@ -200,6 +202,7 @@ jobs:
           symbol_level = 0
           blink_symbol_level = 0
           v8_symbol_level = 0
+          use_thin_lto = false
           use_remoteexec = false
           use_reclient = false
 
@@ -224,15 +227,16 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Bare
 
-      # 9. COMPILE APK (Author's target directory: out/Bare)
+      # 9. COMPILE APK (TARGET: out/Bare)
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
           CORES=$(nproc)
+          echo "Starting compilation on all $CORES CPU cores in out/Bare..."
           /home/runner/depot_tools/autoninja -C out/Bare -j $CORES chrome_public_apk
 
-      # 9.5 PRINT FAILURE LOGS
+      # 9.5 PRINT FAILURE LOGS ON ERROR
       - name: Print Failure Logs
         if: failure()
         run: |
