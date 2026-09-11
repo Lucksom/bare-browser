@@ -1,4 +1,4 @@
-name: 2. "Build Bare Browser APK"
+name: "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
@@ -39,9 +39,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. SETUP SYSTEM RESOURCES & ACCELERATION
+      # 1. SETUP SYSTEM RESOURCES & ACCELERATION (FIXED 60GB TMPDIR)
       - name: Setup System Resources & Acceleration
         run: |
+          echo "=== Freeing Runner Disk Space ==="
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
           sudo docker image prune --all --force || true
           sudo apt-get clean
@@ -54,9 +55,10 @@ jobs:
           sudo mkswap /mnt/swapfile
           sudo swapon /mnt/swapfile
 
-          mkdir -p /dev/shm/tmp
-          chmod 1777 /dev/shm/tmp
-          echo "TMPDIR=/dev/shm/tmp" >> $GITHUB_ENV
+          # Use /mnt/tmp which has 60+ GB of fast SSD space (replaces tiny /dev/shm)
+          sudo mkdir -p /mnt/tmp
+          sudo chmod 1777 /mnt/tmp
+          echo "TMPDIR=/mnt/tmp" >> $GITHUB_ENV
 
       # 2. INSTALL PREREQUISITES
       - name: Install Prerequisites
@@ -64,7 +66,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq git curl python3 build-essential openjdk-17-jdk ninja-build patch zstd
 
-      # 3. SETUP DEPOT TOOLS (PROPER INITIALIZATION)
+      # 3. SETUP DEPOT TOOLS
       - name: Setup Depot Tools
         run: |
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /home/runner/depot_tools
@@ -74,8 +76,6 @@ jobs:
           touch /home/runner/depot_tools/metrics.cfg
           echo "opt-out" > /home/runner/depot_tools/metrics.cfg
           echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
-
-          # Initialize depot_tools Python environment cleanly
           /home/runner/depot_tools/update_depot_tools || true
 
       # 4. DOWNLOAD & EXTRACT OFFICIAL BARE BASE ARCHIVE
@@ -102,7 +102,7 @@ jobs:
             git am --3way --ignore-whitespace "$p" || git apply --recount --ignore-space-change "$p" || patch -p1 --forward < "$p" || true
           done
 
-      # 6. INJECT KIWI TAB SWITCHER (USING EXTERNAL SCRIPT TO PREVENT YAML ERRORS)
+      # 6. INJECT KIWI TAB SWITCHER (GRIT-SAFE)
       - name: Inject Kiwi Tab Switcher Settings
         run: |
           cd /home/runner/chromium/src
@@ -182,7 +182,7 @@ jobs:
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-    # 8. CONFIGURE GN
+      # 8. CONFIGURE GN
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -199,10 +199,10 @@ jobs:
           android_static_analysis = "off"
           treat_warnings_as_errors = false
 
-          # Pure 64-bit ARM64 compilation (cuts ~40% compile time)
+          # Pure 64-bit ARM64 compilation
           build_apk_secondary_abi = false
 
-          # Zero LTO crawl and stripped debug symbols
+          # Fast compilation flags
           symbol_level = 0
           blink_symbol_level = 0
           v8_symbol_level = 0
@@ -212,7 +212,6 @@ jobs:
           use_remoteexec = false
           use_reclient = false
 
-          # Lean V8 compilation
           v8_enable_debugging_features = false
           v8_enable_object_print = false
           v8_enable_verify_heap = false
@@ -220,7 +219,6 @@ jobs:
           proprietary_codecs = true
           ffmpeg_branding = "Chrome"
 
-          # Bypass bloat desktop/VR targets
           enable_pdf = false
           enable_plugins = false
           enable_print_preview = false
@@ -247,9 +245,7 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Bare
 
-        
-         
-      # 9. COMPILE APK
+      # 9. COMPILE APK (4-THREAD CONCURRENCY)
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
