@@ -1,4 +1,4 @@
-name: 2. "Build Bare Browser APK"
+name: "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
