@@ -105,10 +105,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5. APPLY PATCHES (WITH 3-WAY MERGE) & INJECT KIWI TAB SWITCHER
+      # 5. APPLY PATCHES & INJECT KIWI TAB SWITCHER
       - name: Apply Patches & Inject Tab Switcher
         run: |
           cd /home/runner/chromium/src
+
+          # Clean any stale unlisted files from prior attempts
+          find . -name "tab_switcher_arrays.xml" -delete || true
 
           for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" ! -name "*0100*" | sort); do
             echo "Applying patch: $p"
@@ -133,30 +136,43 @@ jobs:
                               xf.write(content)
                           print(f"Added Tab Switcher preference to: {xml_path}")
 
-          # 2. Add Arrays XML
-          arrays_xml = '''<?xml version="1.0" encoding="utf-8"?>
-          <resources>
-              <string-array name="tab_switcher_entries">
-                  <item>Default</item>
-                  <item>Original (vertical, same as old Chromium)</item>
-                  <item>Horizontal (same as old Chromium)</item>
-                  <item>Grid (supports tab group)</item>
-                  <item>List</item>
-              </string-array>
-              <string-array name="tab_switcher_values">
-                  <item>0</item>
-                  <item>1</item>
-                  <item>2</item>
-                  <item>3</item>
-                  <item>4</item>
-              </string-array>
-          </resources>'''
-          values_dirs = glob.glob("chrome/**/res/values", recursive=True)
-          if values_dirs:
-              target_val = os.path.join(values_dirs[0], "tab_switcher_arrays.xml")
-              with open(target_val, "w", encoding="utf-8") as vf:
-                  vf.write(arrays_xml)
-              print(f"Created tab switcher entries at: {target_val}")
+          # 2. INJECT INTO EXISTING REGISTERED XML (Fixes prepare_resources.py error)
+          arrays_snippet = '''
+    <string-array name="tab_switcher_entries">
+        <item>Default</item>
+        <item>Original (vertical, same as old Chromium)</item>
+        <item>Horizontal (same as old Chromium)</item>
+        <item>Grid (supports tab group)</item>
+        <item>List</item>
+    </string-array>
+    <string-array name="tab_switcher_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+</resources>'''
+
+          target_arrays_xml = "chrome/android/java/res/values/arrays.xml"
+          if os.path.exists(target_arrays_xml):
+              with open(target_arrays_xml, "r", encoding="utf-8") as af:
+                  content = af.read()
+              if "tab_switcher_entries" not in content:
+                  content = content.replace("</resources>", arrays_snippet)
+                  with open(target_arrays_xml, "w", encoding="utf-8") as af:
+                      af.write(content)
+                  print(f"SUCCESS: Injected tab_switcher arrays into existing: {target_arrays_xml}")
+          else:
+              for s_file in glob.glob("chrome/**/res/values/strings.xml", recursive=True):
+                  with open(s_file, "r", encoding="utf-8") as sf:
+                      s_content = sf.read()
+                  if "tab_switcher_entries" not in s_content:
+                      s_content = s_content.replace("</resources>", arrays_snippet)
+                      with open(s_file, "w", encoding="utf-8") as sf:
+                          sf.write(s_content)
+                      print(f"SUCCESS: Injected tab_switcher arrays into: {s_file}")
+                      break
 
           # 3. Hook Preference in Java
           for root, dirs, files in os.walk("chrome"):
