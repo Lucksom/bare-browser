@@ -1,4 +1,4 @@
-name: 2. "Build Bare Browser APK"
+name: "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
@@ -49,7 +49,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. SETUP 16GB SWAP & MEMORY
+      # 1. SETUP 16GB SWAP & MEMORY ACCELERATION
       - name: Setup System Resources & Acceleration
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
@@ -64,6 +64,7 @@ jobs:
           sudo mkswap /swapfile
           sudo swapon /swapfile
           
+          # Stable compiler swappiness
           sudo sysctl vm.swappiness=10
           sudo sysctl vm.vfs_cache_pressure=50
           free -h
@@ -114,7 +115,7 @@ jobs:
             git am --3way --ignore-whitespace "$p" || git apply --recount --ignore-space-change "$p" || patch -p1 --forward < "$p" || true
           done
 
-      # 6. INJECT KIWI TAB SWITCHER
+      # 6. INJECT KIWI TAB SWITCHER (GRIT-SAFE)
       - name: Inject Kiwi Tab Switcher Settings
         run: |
           cd /home/runner/chromium/src
@@ -187,14 +188,14 @@ jobs:
           find . -name "*.rej" -delete || true
           find . -name "*.orig" -delete || true
 
-      # 7. DOWNLOAD UBLOCK ORIGIN CRX
+      # 7. DOWNLOAD UBLOCK ORIGIN CRX (1.74.0)
       - name: Download uBlock Origin CRX
         run: |
           mkdir -p /home/runner/chromium/src/chrome/browser/resources/bare
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. CONFIGURE GN
+      # 8. CONFIGURE GN (OPTIMIZED FOR ULTRA-FAST COMPILATION)
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -211,14 +212,22 @@ jobs:
           android_static_analysis = "off"
           treat_warnings_as_errors = false
 
+          # Pure 64-bit ARM64 compilation (cuts ~40% compile time)
           build_apk_secondary_abi = false
 
+          # Native Ninja & single-link concurrency for stability
           use_siso = false
           concurrent_links = 1
 
+          # Disable Perfetto & Tracing bloat (prevents memory bottlenecks)
           enable_base_tracing = false
           use_perfetto_client_library = false
 
+          # Speed up WebUI & build tooling
+          optimize_webui = false
+          v8_enable_fast_mksnapshot = true
+
+          # Strip debug symbols completely
           symbol_level = 0
           blink_symbol_level = 0
           v8_symbol_level = 0
@@ -235,6 +244,7 @@ jobs:
           proprietary_codecs = true
           ffmpeg_branding = "Chrome"
 
+          # Prune heavy unused features & desktop engines
           enable_pdf = false
           enable_plugins = false
           enable_print_preview = false
@@ -251,6 +261,9 @@ jobs:
           enable_arcore = false
           enable_cardboard = false
           enable_openxr = false
+          enable_web_speech = false
+          enable_feed_v2 = false
+          safe_browsing_mode = 0
 
           disable_fieldtrial_testing_config = true
 
@@ -286,19 +299,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. COMPILE WITH 4.8 HOUR RUNTIME GUARD
+      # 9. COMPILE WITH 4-CORE CONCURRENCY & LIVE LOGGING
       - name: Compile APK
         id: compile
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
+          export TERM=dumb
 
-          # Run ninja with a 4.8-hour timeout (17280s) so we have 40 mins to save a checkpoint before GitHub kills the job
-          echo "Starting Ninja compilation (j=3)..."
+          echo "Starting Ninja compilation (j=4)..."
           set +e
-          timeout 17280 stdbuf -oL -eL /home/runner/depot_tools/ninja -C out/Bare -j 3 chrome_public_apk
-          EXIT_CODE=$?
+          # 17280s = 4.8h: Leaves 40 minutes buffer for checkpoint upload if needed
+          timeout 17280 stdbuf -oL -eL /home/runner/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
+          EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
           if [ $EXIT_CODE -eq 0 ]; then
@@ -308,10 +322,30 @@ jobs:
             echo "COMPILATION_COMPLETED=false" >> $GITHUB_ENV
           else
             echo "Ninja encountered an error. Code: $EXIT_CODE"
+            echo "COMPILATION_COMPLETED=failed" >> $GITHUB_ENV
             exit $EXIT_CODE
           fi
 
-      # 10. SAVE STAGE 1 CHECKPOINT (RUNS IF TIME LIMIT REACHED)
+      # 9.5 PRINT LOGS ON FAILURE OR CANCEL
+      - name: Print Build Logs & Diagnosis
+        if: failure() || cancelled()
+        run: |
+          cd /home/runner/chromium/src
+          echo "=========================================="
+          echo "=== LAST 200 LINES OF CONSOLE OUTPUT ==="
+          echo "=========================================="
+          if [ -f out/Bare/ninja_console.log ]; then
+            tail -n 200 out/Bare/ninja_console.log
+          fi
+
+          echo "=========================================="
+          echo "=== LAST 100 LINES OF NINJA LOG ==="
+          echo "=========================================="
+          if [ -f out/Bare/.ninja_log ]; then
+            tail -n 100 out/Bare/.ninja_log
+          fi
+
+      # 10. SAVE STAGE 1 CHECKPOINT (RUNS ONLY IF TIME LIMIT REACHED)
       - name: Save Checkpoint to GitHub Release
         if: env.COMPILATION_COMPLETED == 'false'
         run: |
@@ -319,8 +353,8 @@ jobs:
           mkdir -p /home/runner/checkpoint_upload
           cd /home/runner/chromium/src/out/Bare
           
-          # Exclude temporary pipes, package only compiled obj and gen trees
-          tar -cf - --exclude='*.apk' obj gen args.gn build.ninja | zstd -3 -T0 | split -b 1900M - /home/runner/checkpoint_upload/checkpoint.tar.zst.part_
+          # Compress obj and gen trees with zstd level 3 (fast + multithreaded)
+          tar -cf - --exclude='*.apk' --exclude='*.log' obj gen args.gn build.ninja | zstd -3 -T0 | split -b 1900M - /home/runner/checkpoint_upload/checkpoint.tar.zst.part_
 
           cd /home/runner/checkpoint_upload
           ls -lh
