@@ -202,7 +202,7 @@ jobs:
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. CONFIGURE GN ARGS (ENABLE EXTENSIONS FOR BARE ENTRY POINT)
+      # 8. CONFIGURE GN (OFFICIAL BARE ARGS)
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -210,10 +210,7 @@ jobs:
           cat << 'EOF' > out/Bare/args.gn
           target_os = "android"
           target_cpu = "arm64"
-
-          # Enables extensions API generator needed by Bare chrome_entry_point
-          enable_extensions = true
-
+          is_desktop_android = true
           is_official_build = false
           is_debug = false
           is_java_debug = false
@@ -222,29 +219,21 @@ jobs:
           android_static_analysis = "off"
           treat_warnings_as_errors = false
 
-          # Pure 64-bit ARM64 compilation
           build_apk_secondary_abi = false
-
-          # Speed up Java compilation
           disable_android_lint = true
           use_errorprone_java_compiler = false
 
-          # Restrict locales to English
           locales = ["en-US", "en-GB"]
 
-          # Native Ninja & single-link concurrency for stability
           use_siso = false
           concurrent_links = 1
 
-          # Disable Perfetto & Tracing bloat
           enable_base_tracing = false
           use_perfetto_client_library = false
 
-          # Speed up WebUI & build tooling
           optimize_webui = false
           v8_enable_fast_mksnapshot = true
 
-          # Strip debug symbols completely
           symbol_level = 0
           blink_symbol_level = 0
           v8_symbol_level = 0
@@ -261,7 +250,6 @@ jobs:
           proprietary_codecs = true
           ffmpeg_branding = "Chrome"
 
-          # Prune heavy unused features
           enable_pdf = false
           enable_plugins = false
           enable_print_preview = false
@@ -289,7 +277,7 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Bare
 
-      # 8.5 RESTORE CHECKPOINT WITH MTIME TOUCH & GN REGEN
+      # 8.5 RESTORE CHECKPOINT WITH MTIME TOUCH (RESUME IN SECONDS)
       - name: Restore Checkpoint (If exists)
         run: |
           STAGE="${{ github.event.inputs.stage || 'auto' }}"
@@ -305,13 +293,10 @@ jobs:
                 cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /home/runner/chromium/src/out/Bare/
                 rm -rf /home/runner/checkpoint_download
 
-                echo "Updating mtimes so Ninja recognizes restored objects..."
+                echo "Updating mtimes so Ninja recognizes restored objects are newer than sources..."
                 find /home/runner/chromium/src/out/Bare/obj \
                      /home/runner/chromium/src/out/Bare/gen \
                      -type f -exec touch {} + 2>/dev/null || true
-
-                # Regenerate Ninja graph to ensure all restored targets sync
-                /home/runner/depot_tools/gn gen /home/runner/chromium/src/out/Bare
 
                 echo "Checkpoint successfully restored! Ninja will resume from existing targets."
               else
@@ -324,7 +309,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. COMPILE WITH WATCHDOG & LIVE UNBUFFERED LOGGING
+      # 9. COMPILE WITH WATCHDOG & LIVE LOGGING
       - name: Compile APK
         id: compile
         run: |
@@ -333,7 +318,6 @@ jobs:
           export PYTHONUNBUFFERED=1
           export TERM=dumb
 
-          # Background watchdog: logs memory and active processes every 5 minutes
           (
             while true; do
               sleep 300
@@ -348,7 +332,6 @@ jobs:
 
           echo "Starting Ninja compilation (j=4 RAM-safe)..."
           set +e
-          # 17280s = 4.8h runtime guard
           timeout 17280 stdbuf -oL -eL /home/runner/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
@@ -385,7 +368,7 @@ jobs:
             tail -n 100 out/Bare/.ninja_log
           fi
 
-      # 10. SAVE STAGE 1 CHECKPOINT (WITH NINJA LOGS)
+      # 10. SAVE STAGE 1 CHECKPOINT (WITH .ninja_log & .ninja_deps)
       - name: Save Checkpoint to GitHub Release
         if: env.COMPILATION_COMPLETED == 'false'
         run: |
