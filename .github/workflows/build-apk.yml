@@ -63,7 +63,7 @@ jobs:
           sudo mkswap /swapfile
           sudo swapon /swapfile
           
-          # Stable compiler swappiness
+          # Stable compiler swappiness to prevent I/O thrashing
           sudo sysctl vm.swappiness=10
           sudo sysctl vm.vfs_cache_pressure=50
           free -h
@@ -72,7 +72,7 @@ jobs:
           sudo chmod 1777 /mnt/tmp
           echo "TMPDIR=/mnt/tmp" >> $GITHUB_ENV
 
-      # 2. INSTALL PREREQUISITES (ROBUST WITH LOCK CLEANUP)
+      # 2. INSTALL PREREQUISITES (HERMETIC JDK ONLY - NO SYSTEM JAVA CONFLICT)
       - name: Install Prerequisites
         run: |
           echo "Clearing potential apt locks..."
@@ -82,7 +82,7 @@ jobs:
 
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            git curl python3 build-essential openjdk-17-jdk ninja-build patch zstd
+            git curl python3 build-essential ninja-build patch zstd
 
       # 3. SETUP DEPOT TOOLS
       - name: Setup Depot Tools
@@ -200,7 +200,7 @@ jobs:
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. CONFIGURE GN (OFFICIAL ARGS + ULTRA-FAST FLAGS)
+      # 8. CONFIGURE GN (OFFICIAL ARGS + HIGH PERFORMANCE FLAGS)
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -304,7 +304,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. COMPILE WITH 4-CORE CONCURRENCY & LIVE LOGGING
+      # 9. COMPILE WITH WATCHDOG & LIVE UNBUFFERED LOGGING
       - name: Compile APK
         id: compile
         run: |
@@ -313,12 +313,27 @@ jobs:
           export PYTHONUNBUFFERED=1
           export TERM=dumb
 
+          # Background watchdog: logs memory and active processes every 5 minutes
+          (
+            while true; do
+              sleep 300
+              echo "--- [WATCHDOG] System Check: $(date) ---"
+              free -h
+              echo "Top processes by CPU:"
+              ps aux --sort=-%cpu | head -n 6
+              echo "----------------------------------------"
+            done
+          ) &
+          WATCHDOG_PID=$!
+
           echo "Starting Ninja compilation (j=4)..."
           set +e
-          # 17280s = 4.8h: Leaves 40 minutes buffer for checkpoint upload if needed
+          # 17280s = 4.8h runtime guard
           timeout 17280 stdbuf -oL -eL /home/runner/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
+
+          kill $WATCHDOG_PID 2>/dev/null || true
 
           if [ $EXIT_CODE -eq 0 ]; then
             echo "COMPILATION_COMPLETED=true" >> $GITHUB_ENV
