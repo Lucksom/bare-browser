@@ -209,7 +209,7 @@ jobs:
           target_os = "android"
           target_cpu = "arm64"
 
-          # Removed is_desktop_android: cuts ~30,000 unnecessary desktop UI targets!
+          # NO is_desktop_android: cuts ~30,000 desktop targets!
 
           is_official_build = false
           is_debug = false
@@ -222,17 +222,12 @@ jobs:
           # Pure 64-bit ARM64 compilation
           build_apk_secondary_abi = false
 
-          # Disable heavy Java linting and analysis (Saves ~30 minutes of CPU time)
+          # Speed up Java compilation
           disable_android_lint = true
           use_errorprone_java_compiler = false
 
           # Restrict locales to English (Cuts thousands of grit translation tasks)
           locales = ["en-US", "en-GB"]
-
-          # Disable Google Mobile Bloat & unused subsystems
-          enable_media_router = false
-          enable_remoting = false
-          enable_offline_pages = false
 
           # Native Ninja & single-link concurrency for stability
           use_siso = false
@@ -263,7 +258,7 @@ jobs:
           proprietary_codecs = true
           ffmpeg_branding = "Chrome"
 
-          # Prune heavy unused features & desktop engines
+          # Prune heavy unused features & desktop engines (100% GN-safe)
           enable_pdf = false
           enable_plugins = false
           enable_print_preview = false
