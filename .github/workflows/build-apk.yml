@@ -64,7 +64,7 @@ jobs:
           sudo mkswap /swapfile
           sudo swapon /swapfile
           
-          # Stable compiler swappiness
+          # Stable compiler swappiness to prevent I/O thrashing
           sudo sysctl vm.swappiness=10
           sudo sysctl vm.vfs_cache_pressure=50
           free -h
@@ -195,7 +195,7 @@ jobs:
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. CONFIGURE GN (OPTIMIZED FOR ULTRA-FAST COMPILATION)
+      # 8. CONFIGURE GN (COMPONENT BUILD + ZERO PROGUARD + ULTRA-FAST LINKING)
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -207,12 +207,19 @@ jobs:
           is_official_build = false
           is_debug = false
           is_java_debug = false
-          is_component_build = false
+          
+          # FAST MODULAR LINKING: Component build (replaces 60m monolithic static link)
+          is_component_build = true
+          
+          # BYPASS R8 / PROGUARD DEX MINIFICATION (Saves 30+ minutes)
+          enable_proguard = false
+          enable_resource_allowlisting = false
+
           dcheck_always_on = false
           android_static_analysis = "off"
           treat_warnings_as_errors = false
 
-          # Pure 64-bit ARM64 compilation (cuts ~40% compile time)
+          # Pure 64-bit ARM64 compilation (prunes 32-bit tree)
           build_apk_secondary_abi = false
 
           # Native Ninja & single-link concurrency for stability
