@@ -9,12 +9,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 340
+    timeout-minutes: 360
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. SETUP INSTANT SWAP & ACCELERATION
+      # 1. SETUP SYSTEM RESOURCES & DISK ACCELERATION
       - name: Setup System Resources & Acceleration
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
@@ -162,7 +162,7 @@ jobs:
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. CONFIGURE GN ARGS (SLIMMED DOWN - NO BLOAT)
+      # 8. CONFIGURE GN ARGS (ORIGINAL MATCHING CHECKPOINT FLAGS)
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -171,7 +171,6 @@ jobs:
           target_os = "android"
           target_cpu = "arm64"
           is_desktop_android = true
-
           is_official_build = false
           is_debug = false
           is_java_debug = false
@@ -180,23 +179,18 @@ jobs:
           android_static_analysis = "off"
           treat_warnings_as_errors = false
 
-          # Pure 64-bit ARM64 compilation
           build_apk_secondary_abi = false
-
-          # Speed up Java compilation
           disable_android_lint = true
           use_errorprone_java_compiler = false
 
-          # Restrict locales to English
-          locales = ["en-US"]
+          locales = ["en-US", "en-GB"]
 
-          # Concurrency
           use_siso = false
-          concurrent_links = 1
+          concurrent_links = 2
 
-          # Disable Tracing, WebUI tests, and heavy components
           enable_base_tracing = false
           use_perfetto_client_library = false
+
           optimize_webui = false
           v8_enable_fast_mksnapshot = true
 
@@ -216,7 +210,6 @@ jobs:
           proprietary_codecs = true
           ffmpeg_branding = "Chrome"
 
-          # Prune heavy unused desktop modules
           enable_pdf = false
           enable_plugins = false
           enable_print_preview = false
@@ -236,7 +229,6 @@ jobs:
           enable_feed_v2 = false
           safe_browsing_mode = 0
 
-          # Skip heavy tests and diagnostics
           disable_fieldtrial_testing_config = true
 
           chrome_public_manifest_package = "org.barebrowser"
@@ -245,25 +237,29 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Bare
 
-      # 8.5 RESTORE CHECKPOINT (IF AVAILABLE)
+      # 9. RESTORE EXISTING CHECKPOINT (FOR INSTANT RESUME)
       - name: Restore Checkpoint (If exists)
         run: |
-          echo "Checking for build checkpoint..."
+          echo "Checking for build checkpoint release..."
           if gh release view chromium-build-checkpoint --repo ${{ github.repository }} >/dev/null 2>&1; then
+            echo "Checkpoint found! Downloading and restoring out/Bare..."
             mkdir -p /home/runner/checkpoint_download
             cd /home/runner/checkpoint_download
-            gh release download chromium-build-checkpoint -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
-            if ls checkpoint.tar.zst.part_* 1> /dev/null 2>&1; then
-              echo "Extracting checkpoint..."
-              cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /home/runner/chromium/src/out/Bare/ || true
-              rm -rf /home/runner/checkpoint_download
-              echo "Checkpoint unpacked!"
-            fi
+            gh release download chromium-build-checkpoint -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }}
+            echo "Extracting checkpoint..."
+            cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /home/runner/chromium/src/out/Bare/
+            rm -rf /home/runner/checkpoint_download
+
+            cd /home/runner/chromium/src
+            find out/Bare -exec touch {} +
+            echo "Checkpoint successfully restored! Ninja will resume from existing targets."
+          else
+            echo "No existing checkpoint found. Building fresh."
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. COMPILE DIRECTLY TO APK (NO 4.8H SHUTDOWN)
+      # 10. COMPILE DIRECTLY TO APK (NO INTERMEDIATE SHUTDOWN)
       - name: Compile APK
         run: |
           cd /home/runner/chromium/src
@@ -272,17 +268,31 @@ jobs:
           export TERM=dumb
 
           echo "Starting Ninja compilation to build ChromePublic.apk..."
-          /home/runner/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk
+          /home/runner/depot_tools/ninja -C out/Bare -j 4 -l 3.5 chrome_public_apk
 
-      # 10. PREPARE AND PUBLISH APK DIRECTLY
-      - name: Prepare & Publish Release APK
+      # 11. PREPARE RELEASE APK
+      - name: Prepare Release APK
+        run: |
+          cd /home/runner/chromium/src
+          mkdir -p $GITHUB_WORKSPACE/output
+          cp out/Bare/apks/ChromePublic.apk $GITHUB_WORKSPACE/output/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
+
+      # 12. PUBLISH APK TO GITHUB RELEASES
+      - name: Publish APK to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0-alpha.3-kiwi
           name: "Bare Browser v1.0.0 (with Kiwi Tab Switcher)"
           body: "Bare Browser v1.0.0-alpha.3 ARM64 with Kiwi Tab Switcher and uBlock Origin 1.74.0"
-          files: /home/runner/chromium/src/out/Bare/apks/ChromePublic.apk
+          files: ${{ github.workspace }}/output/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 13. CLEANUP CHECKPOINT UPON SUCCESSFUL RELEASE
+      - name: Cleanup Checkpoint Release
+        run: |
+          gh release delete chromium-build-checkpoint --repo ${{ github.repository }} --yes || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
