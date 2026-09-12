@@ -6,11 +6,11 @@ on:
       stage:
         description: "Build Stage (auto = resume if checkpoint exists; 1 = force fresh; 2 = force resume)"
         required: true
-        default: "1"
+        default: "auto"
         type: choice
         options:
-          - "1"
           - "auto"
+          - "1"
           - "2"
 
 permissions:
@@ -49,7 +49,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. SETUP 16GB SWAP & KERNEL I/O TUNING
+      # 1. SETUP INSTANT SWAP & ACCELERATION
       - name: Setup System Resources & Acceleration
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
@@ -58,12 +58,11 @@ jobs:
 
           sudo swapoff -a || true
           sudo rm -f /swapfile /mnt/swapfile || true
-          sudo dd if=/dev/zero of=/swapfile bs=1M count=16384 status=progress
+          sudo fallocate -l 16G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=16384 status=progress
           sudo chmod 600 /swapfile
           sudo mkswap /swapfile
           sudo swapon /swapfile
           
-          # Linux Kernel tuning for massive compilation I/O
           sudo sysctl -w fs.file-max=2097152
           sudo sysctl -w vm.max_map_count=262144
           sudo sysctl -w vm.dirty_ratio=80
@@ -75,7 +74,7 @@ jobs:
           sudo chmod 1777 /mnt/tmp
           echo "TMPDIR=/mnt/tmp" >> $GITHUB_ENV
 
-      # 2. INSTALL PREREQUISITES (HERMETIC JDK ONLY - NO SYSTEM JAVA CONFLICT)
+      # 2. INSTALL PREREQUISITES (HERMETIC JDK ONLY)
       - name: Install Prerequisites
         run: |
           echo "Clearing potential apt locks..."
@@ -87,11 +86,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             git curl python3 build-essential ninja-build patch zstd
 
-      # 3. SETUP SCCACHE (MOZILLA COMPILER CACHE FOR GITHUB ACTIONS)
-      - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.4
-
-      # 4. SETUP DEPOT TOOLS
+      # 3. SETUP DEPOT TOOLS
       - name: Setup Depot Tools
         run: |
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /home/runner/depot_tools
@@ -103,7 +98,7 @@ jobs:
           echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
           /home/runner/depot_tools/update_depot_tools || true
 
-      # 5. DOWNLOAD & EXTRACT OFFICIAL BARE BASE ARCHIVE
+      # 4. DOWNLOAD & EXTRACT BASE ARCHIVE
       - name: Download and Extract Base Archive
         run: |
           mkdir -p /home/runner/chromium
@@ -114,7 +109,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 6. APPLY PATCHES
+      # 5. APPLY PATCHES
       - name: Apply Official Bare Patches
         run: |
           cd /home/runner/chromium/src
@@ -127,7 +122,7 @@ jobs:
             git am --3way --ignore-whitespace "$p" || git apply --recount --ignore-space-change "$p" || patch -p1 --forward < "$p" || true
           done
 
-      # 7. INJECT KIWI TAB SWITCHER (GRIT-SAFE)
+      # 6. INJECT KIWI TAB SWITCHER (GRIT-SAFE)
       - name: Inject Kiwi Tab Switcher Settings
         run: |
           cd /home/runner/chromium/src
@@ -200,14 +195,14 @@ jobs:
           find . -name "*.rej" -delete || true
           find . -name "*.orig" -delete || true
 
-      # 8. DOWNLOAD UBLOCK ORIGIN CRX (1.74.0)
+      # 7. DOWNLOAD UBLOCK ORIGIN CRX (1.74.0)
       - name: Download uBlock Origin CRX
         run: |
           mkdir -p /home/runner/chromium/src/chrome/browser/resources/bare
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 9. CONFIGURE GN (PURE MOBILE + SCCACHE + FAST PACKAGING)
+      # 8. CONFIGURE GN ARGS (ENABLE EXTENSIONS FOR BARE ENTRY POINT)
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -216,7 +211,9 @@ jobs:
           target_os = "android"
           target_cpu = "arm64"
 
-          # Pure Mobile Android (no desktop views bloat)
+          # Enables extensions API generator needed by Bare chrome_entry_point
+          enable_extensions = true
+
           is_official_build = false
           is_debug = false
           is_java_debug = false
@@ -228,25 +225,18 @@ jobs:
           # Pure 64-bit ARM64 compilation
           build_apk_secondary_abi = false
 
-          # Route all C/C++ compilation through sccache
-          cc_wrapper = "sccache"
-
-          # Disable PGO and Resource Allowlist scanning
-          chrome_pgo_phase = 0
-          enable_resource_allowlist_generation = false
-
           # Speed up Java compilation
           disable_android_lint = true
           use_errorprone_java_compiler = false
 
-          # Restrict locales to English (Cuts thousands of grit translation tasks)
+          # Restrict locales to English
           locales = ["en-US", "en-GB"]
 
           # Native Ninja & single-link concurrency for stability
           use_siso = false
           concurrent_links = 1
 
-          # Disable Perfetto & Tracing bloat (prevents memory bottlenecks)
+          # Disable Perfetto & Tracing bloat
           enable_base_tracing = false
           use_perfetto_client_library = false
 
@@ -271,7 +261,7 @@ jobs:
           proprietary_codecs = true
           ffmpeg_branding = "Chrome"
 
-          # Prune heavy unused features & desktop engines (100% GN-safe)
+          # Prune heavy unused features
           enable_pdf = false
           enable_plugins = false
           enable_print_preview = false
@@ -299,10 +289,10 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Bare
 
-      # 9.5 RESTORE CHECKPOINT (IF RESUMING)
+      # 8.5 RESTORE CHECKPOINT WITH MTIME TOUCH & GN REGEN
       - name: Restore Checkpoint (If exists)
         run: |
-          STAGE="${{ github.event.inputs.stage || '1' }}"
+          STAGE="${{ github.event.inputs.stage || 'auto' }}"
           if [ "$STAGE" != "1" ]; then
             echo "Checking for build checkpoint release..."
             if gh release view chromium-build-checkpoint --repo ${{ github.repository }} >/dev/null 2>&1; then
@@ -314,6 +304,15 @@ jobs:
                 echo "Extracting checkpoint..."
                 cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /home/runner/chromium/src/out/Bare/
                 rm -rf /home/runner/checkpoint_download
+
+                echo "Updating mtimes so Ninja recognizes restored objects..."
+                find /home/runner/chromium/src/out/Bare/obj \
+                     /home/runner/chromium/src/out/Bare/gen \
+                     -type f -exec touch {} + 2>/dev/null || true
+
+                # Regenerate Ninja graph to ensure all restored targets sync
+                /home/runner/depot_tools/gn gen /home/runner/chromium/src/out/Bare
+
                 echo "Checkpoint successfully restored! Ninja will resume from existing targets."
               else
                 echo "No checkpoint parts found. Starting clean build."
@@ -321,28 +320,18 @@ jobs:
             else
               echo "No checkpoint release found. Starting fresh Stage 1 build."
             fi
-          else
-            echo "Stage 1 (Force Fresh) selected: Skipping checkpoint restoration."
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 10. COMPILE APK WITH SCCACHE + 6-JOB OVERSUBSCRIPTION
+      # 9. COMPILE WITH WATCHDOG & LIVE UNBUFFERED LOGGING
       - name: Compile APK
         id: compile
-        env:
-          SCCACHE_GHA_ENABLED: "true"
-          ACTIONS_CACHE_URL: ${{ github.server_url }}/_apis/artifactcache/
-          ACTIONS_RUNTIME_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
           export TERM=dumb
-
-          # Start sccache daemon
-          sccache --start-server
-          sccache --zero-stats
 
           # Background watchdog: logs memory and active processes every 5 minutes
           (
@@ -357,18 +346,14 @@ jobs:
           ) &
           WATCHDOG_PID=$!
 
-          echo "Starting Ninja compilation (j=6 oversubscription with sccache)..."
+          echo "Starting Ninja compilation (j=4 RAM-safe)..."
           set +e
           # 17280s = 4.8h runtime guard
-          timeout 17280 stdbuf -oL -eL /home/runner/depot_tools/ninja -C out/Bare -j 6 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
+          timeout 17280 stdbuf -oL -eL /home/runner/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
           kill $WATCHDOG_PID 2>/dev/null || true
-
-          # Print sccache statistics
-          echo "=== SCCACHE STATS ==="
-          sccache --show-stats || true
 
           if [ $EXIT_CODE -eq 0 ]; then
             echo "COMPILATION_COMPLETED=true" >> $GITHUB_ENV
@@ -381,7 +366,7 @@ jobs:
             exit $EXIT_CODE
           fi
 
-      # 10.5 PRINT LOGS ON FAILURE OR CANCEL
+      # 9.5 PRINT LOGS ON FAILURE OR CANCEL
       - name: Print Build Logs & Diagnosis
         if: failure() || cancelled()
         run: |
@@ -400,7 +385,7 @@ jobs:
             tail -n 100 out/Bare/.ninja_log
           fi
 
-      # 11. SAVE STAGE 1 CHECKPOINT (RUNS ONLY IF TIME LIMIT REACHED)
+      # 10. SAVE STAGE 1 CHECKPOINT (WITH NINJA LOGS)
       - name: Save Checkpoint to GitHub Release
         if: env.COMPILATION_COMPLETED == 'false'
         run: |
@@ -408,8 +393,7 @@ jobs:
           mkdir -p /home/runner/checkpoint_upload
           cd /home/runner/chromium/src/out/Bare
           
-          # Compress obj and gen trees with zstd level 3 (fast + multithreaded)
-          tar -cf - --exclude='*.apk' --exclude='*.log' obj gen args.gn build.ninja | zstd -3 -T0 | split -b 1900M - /home/runner/checkpoint_upload/checkpoint.tar.zst.part_
+          tar -cf - --exclude='*.apk' obj gen args.gn build.ninja .ninja_log .ninja_deps | zstd -3 -T0 | split -b 1900M - /home/runner/checkpoint_upload/checkpoint.tar.zst.part_
 
           cd /home/runner/checkpoint_upload
           ls -lh
@@ -430,7 +414,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 12. PREPARE FINAL RELEASE ARTIFACTS
+      # 11. PREPARE FINAL RELEASE ARTIFACTS
       - name: Prepare Release APK
         if: env.COMPILATION_COMPLETED == 'true'
         run: |
@@ -438,7 +422,7 @@ jobs:
           cp /home/runner/chromium/src/out/Bare/apks/ChromePublic.apk /home/runner/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
           ls -lh /home/runner/output_apk/
 
-      # 13. PUBLISH DIRECTLY TO GITHUB RELEASES
+      # 12. PUBLISH DIRECTLY TO GITHUB RELEASES
       - name: Publish APK to GitHub Releases
         if: env.COMPILATION_COMPLETED == 'true'
         uses: softprops/action-gh-release@v2
@@ -452,7 +436,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 14. CLEAN UP CHECKPOINT ON SUCCESSFUL FINAL BUILD
+      # 13. CLEAN UP CHECKPOINT ON SUCCESSFUL FINAL BUILD
       - name: Cleanup Checkpoint Release
         if: env.COMPILATION_COMPLETED == 'true'
         run: |
