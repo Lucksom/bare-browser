@@ -2,47 +2,12 @@ name: "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
-    inputs:
-      stage:
-        description: "Build Stage (auto = resume if checkpoint exists; 1 = force fresh; 2 = force resume)"
-        required: true
-        default: "auto"
-        type: choice
-        options:
-          - "auto"
-          - "1"
-          - "2"
 
 permissions:
   contents: write
 
 jobs:
-  validate-patches:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Pre-Validate Patches Syntax
-        run: |
-          echo "VALIDATING BASE PATCH SYNTAX"
-          rm -f $GITHUB_WORKSPACE/patches/*0100* || true
-          FAILED=false
-          for p in $(find $GITHUB_WORKSPACE/patches -type f -name "*.patch" | sort); do
-            ERR=$(git apply --stat "$p" 2>&1 || true)
-            if echo "$ERR" | grep -q "corrupt patch"; then
-              echo "FAILED (CORRUPT): $(basename $p)"
-              FAILED=true
-            fi
-          done
-          if [ "$FAILED" = "true" ]; then
-            exit 1
-          fi
-          echo "ALL BASE PATCHES VALID!"
-
   build:
-    needs: validate-patches
     runs-on: ubuntu-24.04
     timeout-minutes: 340
     steps:
@@ -74,14 +39,9 @@ jobs:
           sudo chmod 1777 /mnt/tmp
           echo "TMPDIR=/mnt/tmp" >> $GITHUB_ENV
 
-      # 2. INSTALL PREREQUISITES (HERMETIC JDK ONLY)
+      # 2. INSTALL PREREQUISITES
       - name: Install Prerequisites
         run: |
-          echo "Clearing potential apt locks..."
-          sudo killall apt apt-get 2>/dev/null || true
-          sudo rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock* || true
-          sudo dpkg --configure -a || true
-
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             git curl python3 build-essential ninja-build patch zstd
@@ -202,7 +162,7 @@ jobs:
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. CONFIGURE GN (OFFICIAL BARE ARGS)
+      # 8. CONFIGURE GN ARGS (SLIMMED DOWN - NO BLOAT)
       - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
@@ -211,6 +171,7 @@ jobs:
           target_os = "android"
           target_cpu = "arm64"
           is_desktop_android = true
+
           is_official_build = false
           is_debug = false
           is_java_debug = false
@@ -219,18 +180,23 @@ jobs:
           android_static_analysis = "off"
           treat_warnings_as_errors = false
 
+          # Pure 64-bit ARM64 compilation
           build_apk_secondary_abi = false
+
+          # Speed up Java compilation
           disable_android_lint = true
           use_errorprone_java_compiler = false
 
-          locales = ["en-US", "en-GB"]
+          # Restrict locales to English
+          locales = ["en-US"]
 
+          # Concurrency
           use_siso = false
           concurrent_links = 1
 
+          # Disable Tracing, WebUI tests, and heavy components
           enable_base_tracing = false
           use_perfetto_client_library = false
-
           optimize_webui = false
           v8_enable_fast_mksnapshot = true
 
@@ -250,6 +216,7 @@ jobs:
           proprietary_codecs = true
           ffmpeg_branding = "Chrome"
 
+          # Prune heavy unused desktop modules
           enable_pdf = false
           enable_plugins = false
           enable_print_preview = false
@@ -269,6 +236,7 @@ jobs:
           enable_feed_v2 = false
           safe_browsing_mode = 0
 
+          # Skip heavy tests and diagnostics
           disable_fieldtrial_testing_config = true
 
           chrome_public_manifest_package = "org.barebrowser"
@@ -277,153 +245,44 @@ jobs:
           EOF
           /home/runner/depot_tools/gn gen out/Bare
 
-      # 8.5 RESTORE CHECKPOINT WITH MTIME TOUCH (RESUME IN SECONDS)
+      # 8.5 RESTORE CHECKPOINT (IF AVAILABLE)
       - name: Restore Checkpoint (If exists)
         run: |
-          STAGE="${{ github.event.inputs.stage || 'auto' }}"
-          if [ "$STAGE" != "1" ]; then
-            echo "Checking for build checkpoint release..."
-            if gh release view chromium-build-checkpoint --repo ${{ github.repository }} >/dev/null 2>&1; then
-              echo "Checkpoint found! Downloading and restoring out/Bare..."
-              mkdir -p /home/runner/checkpoint_download
-              cd /home/runner/checkpoint_download
-              gh release download chromium-build-checkpoint -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
-              if ls checkpoint.tar.zst.part_* 1> /dev/null 2>&1; then
-                echo "Extracting checkpoint..."
-                cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /home/runner/chromium/src/out/Bare/
-                rm -rf /home/runner/checkpoint_download
-
-                echo "Updating mtimes so Ninja recognizes restored objects are newer than sources..."
-                find /home/runner/chromium/src/out/Bare/obj \
-                     /home/runner/chromium/src/out/Bare/gen \
-                     -type f -exec touch {} + 2>/dev/null || true
-
-                echo "Checkpoint successfully restored! Ninja will resume from existing targets."
-              else
-                echo "No checkpoint parts found. Starting clean build."
-              fi
-            else
-              echo "No checkpoint release found. Starting fresh Stage 1 build."
+          echo "Checking for build checkpoint..."
+          if gh release view chromium-build-checkpoint --repo ${{ github.repository }} >/dev/null 2>&1; then
+            mkdir -p /home/runner/checkpoint_download
+            cd /home/runner/checkpoint_download
+            gh release download chromium-build-checkpoint -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
+            if ls checkpoint.tar.zst.part_* 1> /dev/null 2>&1; then
+              echo "Extracting checkpoint..."
+              cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /home/runner/chromium/src/out/Bare/ || true
+              rm -rf /home/runner/checkpoint_download
+              echo "Checkpoint unpacked!"
             fi
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. COMPILE WITH WATCHDOG & LIVE LOGGING
+      # 9. COMPILE DIRECTLY TO APK (NO 4.8H SHUTDOWN)
       - name: Compile APK
-        id: compile
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
           export TERM=dumb
 
-          (
-            while true; do
-              sleep 300
-              echo "--- [WATCHDOG] System Check: $(date) ---"
-              free -h
-              echo "Top processes by CPU:"
-              ps aux --sort=-%cpu | head -n 6
-              echo "----------------------------------------"
-            done
-          ) &
-          WATCHDOG_PID=$!
+          echo "Starting Ninja compilation to build ChromePublic.apk..."
+          /home/runner/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk
 
-          echo "Starting Ninja compilation (j=4 RAM-safe)..."
-          set +e
-          timeout 17280 stdbuf -oL -eL /home/runner/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
-          EXIT_CODE=${PIPESTATUS[0]}
-          set -e
-
-          kill $WATCHDOG_PID 2>/dev/null || true
-
-          if [ $EXIT_CODE -eq 0 ]; then
-            echo "COMPILATION_COMPLETED=true" >> $GITHUB_ENV
-          elif [ $EXIT_CODE -eq 124 ]; then
-            echo "Compilation reached checkpoint timeout (4.8 hours). Preparing Stage 1 checkpoint..."
-            echo "COMPILATION_COMPLETED=false" >> $GITHUB_ENV
-          else
-            echo "Ninja encountered an error. Code: $EXIT_CODE"
-            echo "COMPILATION_COMPLETED=failed" >> $GITHUB_ENV
-            exit $EXIT_CODE
-          fi
-
-      # 9.5 PRINT LOGS ON FAILURE OR CANCEL
-      - name: Print Build Logs & Diagnosis
-        if: failure() || cancelled()
-        run: |
-          cd /home/runner/chromium/src
-          echo "=========================================="
-          echo "=== LAST 200 LINES OF CONSOLE OUTPUT ==="
-          echo "=========================================="
-          if [ -f out/Bare/ninja_console.log ]; then
-            tail -n 200 out/Bare/ninja_console.log
-          fi
-
-          echo "=========================================="
-          echo "=== LAST 100 LINES OF NINJA LOG ==="
-          echo "=========================================="
-          if [ -f out/Bare/.ninja_log ]; then
-            tail -n 100 out/Bare/.ninja_log
-          fi
-
-      # 10. SAVE STAGE 1 CHECKPOINT (WITH .ninja_log & .ninja_deps)
-      - name: Save Checkpoint to GitHub Release
-        if: env.COMPILATION_COMPLETED == 'false'
-        run: |
-          echo "Compressing compiled build artifacts in out/Bare..."
-          mkdir -p /home/runner/checkpoint_upload
-          cd /home/runner/chromium/src/out/Bare
-          
-          tar -cf - --exclude='*.apk' obj gen args.gn build.ninja .ninja_log .ninja_deps | zstd -3 -T0 | split -b 1900M - /home/runner/checkpoint_upload/checkpoint.tar.zst.part_
-
-          cd /home/runner/checkpoint_upload
-          ls -lh
-
-          echo "Uploading checkpoint to release: chromium-build-checkpoint"
-          gh release delete chromium-build-checkpoint --repo ${{ github.repository }} --yes || true
-          git push --delete origin chromium-build-checkpoint || true
-          
-          gh release create chromium-build-checkpoint \
-            checkpoint.tar.zst.part_* \
-            --repo ${{ github.repository }} \
-            --title "Chromium Build Checkpoint (Stage 1)" \
-            --notes "Checkpoint snapshot taken at ~4.8 hours. Run workflow again with stage=2 to finish APK." \
-            --prerelease
-          
-          echo "Checkpoint uploaded! Now trigger the workflow once more to complete Stage 2."
-          exit 0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 11. PREPARE FINAL RELEASE ARTIFACTS
-      - name: Prepare Release APK
-        if: env.COMPILATION_COMPLETED == 'true'
-        run: |
-          mkdir -p /home/runner/output_apk
-          cp /home/runner/chromium/src/out/Bare/apks/ChromePublic.apk /home/runner/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
-          ls -lh /home/runner/output_apk/
-
-      # 12. PUBLISH DIRECTLY TO GITHUB RELEASES
-      - name: Publish APK to GitHub Releases
-        if: env.COMPILATION_COMPLETED == 'true'
+      # 10. PREPARE AND PUBLISH APK DIRECTLY
+      - name: Prepare & Publish Release APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0-alpha.3-kiwi
           name: "Bare Browser v1.0.0 (with Kiwi Tab Switcher)"
           body: "Bare Browser v1.0.0-alpha.3 ARM64 with Kiwi Tab Switcher and uBlock Origin 1.74.0"
-          files: /home/runner/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
+          files: /home/runner/chromium/src/out/Bare/apks/ChromePublic.apk
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 13. CLEAN UP CHECKPOINT ON SUCCESSFUL FINAL BUILD
-      - name: Cleanup Checkpoint Release
-        if: env.COMPILATION_COMPLETED == 'true'
-        run: |
-          gh release delete chromium-build-checkpoint --repo ${{ github.repository }} --yes || true
-          git push --delete origin chromium-build-checkpoint || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
