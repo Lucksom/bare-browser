@@ -1,4 +1,4 @@
-name: "Build Bare Browser APK"
+name: 2. "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
@@ -67,6 +67,9 @@ jobs:
           # Remount /mnt to eliminate disk write barrier locks and delay journal commits
           sudo mount -o remount,noatime,nodiratime,commit=600,barrier=0 /mnt 2>/dev/null || true
 
+          # Grant full write permissions on /mnt to runner user
+          sudo chown -R runner:docker /mnt || sudo chmod -R 777 /mnt
+
           # Linux kernel virtual memory tuning for heavy compilation workloads
           sudo sysctl -w fs.file-max=2097152
           sudo sysctl -w vm.max_map_count=262144
@@ -76,8 +79,8 @@ jobs:
           sudo sysctl -w vm.vfs_cache_pressure=50
 
           # Route all temporary files to the optimized /mnt mount
-          sudo mkdir -p /mnt/tmp
-          sudo chmod 1777 /mnt/tmp
+          mkdir -p /mnt/tmp
+          chmod 1777 /mnt/tmp
           echo "TMPDIR=/mnt/tmp" >> $GITHUB_ENV
           echo "ACTIVE_STAGE=${{ github.event.inputs.stage || 'stage1' }}" >> $GITHUB_ENV
           free -h
@@ -95,8 +98,7 @@ jobs:
       # 3. SETUP DEPOT TOOLS ON /MNT
       - name: Setup Depot Tools on /mnt
         run: |
-          sudo mkdir -p /mnt/depot_tools
-          sudo chown -R runner:docker /mnt/depot_tools
+          mkdir -p /mnt/depot_tools
           git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /mnt/depot_tools
           echo "/mnt/depot_tools" >> $GITHUB_PATH
           export PATH="/mnt/depot_tools:$PATH"
@@ -109,8 +111,7 @@ jobs:
       # 4. DOWNLOAD & EXTRACT BASE ARCHIVE DIRECTLY TO /MNT
       - name: Download and Extract Base Archive on /mnt
         run: |
-          sudo mkdir -p /mnt/chromium
-          sudo chown -R runner:docker /mnt/chromium
+          mkdir -p /mnt/chromium
           cd /mnt/chromium
           gh release download chromium-bare-base -p "chromium-bare-base.tar.zst.part_*" --repo ${{ github.repository }}
           cat chromium-bare-base.tar.zst.part_* | zstd -d -T0 | tar -xf -
