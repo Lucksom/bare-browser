@@ -49,19 +49,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. SETUP SYSTEM RESOURCES, 16GB ZRAM (LZ4) & HIGH-THROUGHPUT DISK
-      - name: Setup System Resources, ZRAM & Acceleration
+      # 1. SETUP SYSTEM RESOURCES, 16GB NVMe SWAP & ACCELERATION
+      - name: Setup System Resources, Swap & Acceleration
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
           sudo docker image prune --all --force || true
           sudo apt-get clean || true
 
-          # Configure 16 GB in-memory ZRAM swap with LZ4 compression
+          # Create 16GB high-speed swapfile directly on fast ephemeral SSD (/mnt)
           sudo swapoff -a || true
-          sudo modprobe zram || true
-          sudo zramctl /dev/zram0 -s 16G -a lz4 || true
-          sudo mkswap /dev/zram0 || true
-          sudo swapon /dev/zram0 -p 100 || true
+          sudo rm -f /swapfile /mnt/swapfile || true
+          sudo fallocate -l 16G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=16384 status=progress
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile -p 100
 
           # Remount /mnt to eliminate disk write barrier locks and delay journal commits
           sudo mount -o remount,noatime,nodiratime,commit=600,barrier=0 /mnt 2>/dev/null || true
@@ -71,7 +72,7 @@ jobs:
           sudo sysctl -w vm.max_map_count=262144
           sudo sysctl -w vm.dirty_ratio=60
           sudo sysctl -w vm.dirty_background_ratio=20
-          sudo sysctl -w vm.swappiness=100
+          sudo sysctl -w vm.swappiness=10
           sudo sysctl -w vm.vfs_cache_pressure=50
 
           # Route all temporary files to the optimized /mnt mount
