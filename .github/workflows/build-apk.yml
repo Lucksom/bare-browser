@@ -195,23 +195,31 @@ jobs:
           curl -L -f -o /mnt/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 9. STAGE 2: RESTORE DRAFT RELEASE ARCHIVE (LIGHTWEIGHT RESTORE)
-      - name: Stage 2 - Restore Archive From Draft Release
+      # 9. STAGE 2: RESTORE CHECKPOINT ARCHIVE (RESILIENT RESTORE)
+      - name: Stage 2 - Restore Archive From Release Checkpoint
         if: env.ACTIVE_STAGE == 'stage2'
         run: |
           cd /mnt/chromium/src
           mkdir -p out/Bare
-          echo "Checking for draft checkpoint release..."
+          echo "Checking for checkpoint release (checking chromium-build-checkpoint and build-stage1-draft)..."
           mkdir -p /mnt/checkpoint_download
           cd /mnt/checkpoint_download
-          gh release download build-stage1-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
+
+          # 1. Try downloading from 'chromium-build-checkpoint'
+          # 2. Try downloading from 'build-stage1-draft'
+          # 3. Fallback: query repo releases for checkpoint.tar.zst.part_*
+          gh release download chromium-build-checkpoint -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} 2>/dev/null || \
+          gh release download build-stage1-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} 2>/dev/null || \
+          gh release download -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} 2>/dev/null || true
+
           if ls checkpoint.tar.zst.part_* 1> /dev/null 2>&1; then
-            echo "Unpacking lightweight Stage 1 objects..."
+            echo "Unpacking Stage 1 checkpoint objects into out/Bare..."
             cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /mnt/chromium/src/out/Bare/
             rm -rf /mnt/checkpoint_download
             echo "Stage 1 build directory restored successfully!"
           else
-            echo "Error: Stage 1 draft release not found. Please run stage1 first."
+            echo "Error: Checkpoint release not found under 'chromium-build-checkpoint' or 'build-stage1-draft'."
+            echo "Please verify the checkpoint release tag."
             exit 1
           fi
         env:
