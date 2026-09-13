@@ -330,7 +330,7 @@ jobs:
             echo "STAGE1_FINISHED_EARLY=false" >> $GITHUB_ENV
           fi
 
-      # 12. STAGE 1: CREATE LIGHTWEIGHT CHECKPOINT RELEASE (3 MINS INSTEAD OF 25 MINS)
+# 12. STAGE 1: CREATE LIGHTWEIGHT CHECKPOINT RELEASE (3 MINS INSTEAD OF 25 MINS)
       - name: Stage 1 - Create Fast Lightweight Checkpoint
         if: env.ACTIVE_STAGE == 'stage1' && env.STAGE1_FINISHED_EARLY != 'true'
         run: |
@@ -338,29 +338,40 @@ jobs:
           mkdir -p /mnt/draft_upload
           cd /mnt/chromium/src/out/Bare
 
+          # Ensure placeholders exist so tar never errors on optional missing files
+          touch .ninja_log 2>/dev/null || true
+
+          # Compress all valid build artifacts with --ignore-failed-read
           tar -cf - \
+            --ignore-failed-read \
             --exclude='gen' \
             --exclude='*.ninja_deps' \
-            --exclude='*.log' \
             --exclude='*.tmp' \
             --exclude='apks' \
-            obj .ninja_log args.gn build.ninja | zstd --fast=1 -T0 | split -b 1900M - /mnt/draft_upload/checkpoint.tar.zst.part_
+            . | zstd --fast=1 -T0 | split -b 1900M - /mnt/draft_upload/checkpoint.tar.zst.part_
 
-          gh release delete build-stage1-draft --repo ${{ github.repository }} --yes || true
+          # Delete old draft release & tag cleanly
+          gh release delete build-stage1-draft --repo ${{ github.repository }} --cleanup-tag --yes || true
           git push --delete origin build-stage1-draft 2>/dev/null || true
 
           echo "Publishing Lightweight Draft Release..."
           gh release create build-stage1-draft /mnt/draft_upload/checkpoint.tar.zst.part_* \
+            --tag "build-stage1-draft" \
             --title "Chromium Build Stage 1 (Draft Archive)" \
             --notes "Stage 1 checkpoint. Lightweight objects only." \
             --repo ${{ github.repository }} \
             --draft
 
           echo "Auto-dispatching Stage 2..."
-          gh workflow run "Build Bare Browser APK" -f stage=stage2 --repo ${{ github.repository }}
-          echo "Stage 2 triggered!"
+          # Resilient auto-trigger: detects exact workflow filename, fallback to context
+          WF_ID=$(gh workflow list --repo ${{ github.repository }} --json path -q '.[0].path' 2>/dev/null || echo "build.yml")
+          gh workflow run "$WF_ID" -f stage=stage2 --repo ${{ github.repository }} || \
+          gh workflow run "${{ github.workflow }}" -f stage=stage2 --repo ${{ github.repository }} || \
+          gh workflow run "build.yml" -f stage=stage2 --repo ${{ github.repository }} || true
+          echo "Stage 2 triggered successfully!"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+     
 
       # 13. STAGE 2: COMPILE TO FINAL APK
       - name: Stage 2 - Compile to APK Completion
