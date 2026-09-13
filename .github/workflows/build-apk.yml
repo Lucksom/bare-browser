@@ -1,4 +1,4 @@
-name: 2. "Build Bare Browser APK"
+name: "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
@@ -297,13 +297,11 @@ jobs:
           strip_debug_info = true
           use_lld = true
 
-          # 2. ELIMINATE HEAVY SUBSYSTEMS (~15,000 TARGETS DROPPED)
+          # 2. ELIMINATE HEAVY SUBSYSTEMS (~12,000 TARGETS DROPPED)
           enable_webrtc = false
           use_dawn = false
           skia_use_dawn = false
           enable_webgpu = false
-          enable_rust = false
-          enable_all_rust_features = false
           enable_vulkan = false
           angle_enable_vulkan = false
           enable_dav1d_decoder = false
