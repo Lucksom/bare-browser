@@ -4,14 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       stage:
-        description: 'Select stage to run (stage1, stage2, or stage3)'
+        description: 'Select Build Stage'
         required: true
-        default: 'stage3'
+        default: 'stage1'
         type: choice
         options:
           - stage1
           - stage2
-          - stage3
 
 permissions:
   contents: write
@@ -44,20 +43,20 @@ jobs:
 
   build:
     needs: validate-patches
-    name: Build Bare Browser ARM64 (${{ github.event.inputs.stage || 'stage3' }})
     runs-on: ubuntu-24.04
     timeout-minutes: 360
-
     steps:
-      # 1. RUNNER DISK & MEMORY ACCELERATION
-      - name: Maximize Disk Space & Tune High-Performance Virtual Memory
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 1. SETUP SYSTEM RESOURCES & SWAP ON FAST NVME (/MNT)
+      - name: Setup System Resources & Acceleration
         run: |
-          echo "=== Maximizing Runner Disk Space ==="
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
-          sudo docker image prune -a --force || true
+          sudo docker image prune --all --force || true
           sudo apt-get clean || true
 
-          # Create 16GB Swap File on /mnt (fast NVMe runner storage)
+          # Create 16GB Swap on high-speed /mnt (avoids filling root disk)
           sudo swapoff -a || true
           sudo rm -f /swapfile /mnt/swapfile || true
           sudo fallocate -l 16G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=16384 status=progress
@@ -65,39 +64,38 @@ jobs:
           sudo mkswap /mnt/swapfile
           sudo swapon /mnt/swapfile -p 100
 
-          # Remount /mnt with high-throughput filesystem flags
+          # Remount /mnt with high-throughput flags
           sudo mount -o remount,noatime,nodiratime,commit=600,barrier=0 /mnt 2>/dev/null || true
 
-          # Grant full write permissions on /mnt to runner user
+          # Give full write permissions to runner
           sudo chmod -R 777 /mnt || true
           sudo chown -R runner:docker /mnt || true
 
-          # Linux kernel virtual memory tuning for heavy compilation workloads
+          # Linux kernel virtual memory tuning
           sudo sysctl -w fs.file-max=2097152
           sudo sysctl -w vm.max_map_count=262144
-          sudo sysctl -w vm.dirty_ratio=60
-          sudo sysctl -w vm.dirty_background_ratio=20
+          sudo sysctl -w vm.dirty_ratio=80
           sudo sysctl -w vm.swappiness=10
           sudo sysctl -w vm.vfs_cache_pressure=50
 
-          # Route all temporary files to the optimized /mnt mount
           mkdir -p /mnt/tmp
           chmod 1777 /mnt/tmp
           echo "TMPDIR=/mnt/tmp" >> $GITHUB_ENV
-          echo "ACTIVE_STAGE=${{ github.event.inputs.stage || 'stage3' }}" >> $GITHUB_ENV
+          echo "ACTIVE_STAGE=${{ github.event.inputs.stage || 'stage1' }}" >> $GITHUB_ENV
           free -h
 
-      # 2. INSTALL BUILD TOOLS
-      - name: Install Build Tools
+      # 2. INSTALL PREREQUISITES
+      - name: Install Prerequisites
         run: |
           sudo killall apt apt-get 2>/dev/null || true
           sudo rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock* || true
           sudo dpkg --configure -a || true
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends git curl python3 build-essential ninja-build patch zstd
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git curl python3 build-essential ninja-build patch zstd
 
       # 3. SETUP DEPOT TOOLS ON /MNT
-      - name: Setup Depot Tools on /mnt
+      - name: Setup Depot Tools
         run: |
           sudo mkdir -p /mnt/depot_tools
           sudo chown -R runner:docker /mnt/depot_tools
@@ -110,8 +108,8 @@ jobs:
           echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
           /mnt/depot_tools/update_depot_tools || true
 
-      # 4. DOWNLOAD & EXTRACT BASE ARCHIVE DIRECTLY TO /MNT
-      - name: Download and Extract Base Archive on /mnt
+      # 4. DOWNLOAD & EXTRACT BASE ARCHIVE DIRECTLY ON /MNT
+      - name: Download and Extract Base Archive
         run: |
           sudo mkdir -p /mnt/chromium
           sudo chown -R runner:docker /mnt/chromium
@@ -202,42 +200,37 @@ jobs:
           find . -name "*.rej" -delete || true
           find . -name "*.orig" -delete || true
 
-      # 7. DOWNLOAD UBLOCK ORIGIN CRX
+      # 7. DOWNLOAD UBLOCK ORIGIN CRX (1.74.0)
       - name: Download uBlock Origin CRX
         run: |
           mkdir -p /mnt/chromium/src/chrome/browser/resources/bare
           curl -L -f -o /mnt/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. RESTORE CHECKPOINT (STAGE 2 & STAGE 3)
-      - name: Restore Archive From Release Checkpoint
-        if: env.ACTIVE_STAGE == 'stage2' || env.ACTIVE_STAGE == 'stage3'
+      # 8. STAGE 2: RESTORE DRAFT RELEASE ARCHIVE
+      - name: Stage 2 - Restore Archive From Draft Release
+        if: env.ACTIVE_STAGE == 'stage2'
         run: |
           cd /mnt/chromium/src
           mkdir -p out/Bare
-          echo "Downloading checkpoint release..."
+          echo "Checking for draft checkpoint release..."
           sudo mkdir -p /mnt/checkpoint_download
           sudo chown -R runner:docker /mnt/checkpoint_download
           cd /mnt/checkpoint_download
-
-          # Try stage2 draft first, then stage1 draft, then chromium-build-checkpoint
-          gh release download build-stage2-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} 2>/dev/null || \
-          gh release download build-stage1-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} 2>/dev/null || \
-          gh release download chromium-build-checkpoint -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
-
+          gh release download build-stage1-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
           if ls checkpoint.tar.zst.part_* 1> /dev/null 2>&1; then
-            echo "Unpacking checkpoint objects into out/Bare..."
+            echo "Unpacking complete out/Bare from Stage 1 Draft Release..."
             cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /mnt/chromium/src/out/Bare/
             rm -rf /mnt/checkpoint_download
-            echo "Checkpoint build directory restored successfully!"
+            echo "Stage 1 build directory restored successfully!"
           else
-            echo "Error: Checkpoint release not found."
+            echo "Error: Stage 1 draft release not found. Please run stage1 first."
             exit 1
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. STAGE 1 ONLY: CONFIGURE GN BUILD GRAPH
+      # 9. STAGE 1: CONFIGURE GN BUILD GRAPH
       - name: Stage 1 - Configure GN Build Graph
         if: env.ACTIVE_STAGE == 'stage1'
         run: |
@@ -302,85 +295,70 @@ jobs:
           EOF
           /mnt/depot_tools/gn gen out/Bare
 
-      # 10. COMPILATION RUNNER (4.8 HOURS SAFE WINDOW)
-      - name: Compile Chromium Build Graph
+      # 10. STAGE 1: COMPILE (4.5 HOURS)
+      - name: Stage 1 - Compile Safe Window (4.5 Hours)
+        if: env.ACTIVE_STAGE == 'stage1'
         run: |
           cd /mnt/chromium/src
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
-          export NINJA_STATUS="[%e | %f/%t | %p] "
-
-          echo "Starting Ninja Compilation..."
+          export TERM=dumb
+          echo "Starting Stage 1 compilation (4.5 hours safe window)..."
           set +e
-          # 17,280s = 4.8 Hours Safe Window
-          timeout 17280 /mnt/depot_tools/ninja -C out/Bare -j 4 -l 3.8 chrome_public_apk 2>&1 | tee out/Bare/ninja_build.log
-          NINJA_EXIT=${PIPESTATUS[0]}
+          timeout 16200 /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
+          EXIT_CODE=${PIPESTATUS[0]}
           set -e
-
-          # Check if APK was generated
-          APK_FILE=$(find out/Bare -type f -name "*.apk" | head -n 1)
-          if [ -n "$APK_FILE" ]; then
-            echo "BUILD_COMPLETE=true" >> $GITHUB_ENV
-            echo "FOUND_APK=$APK_FILE" >> $GITHUB_ENV
-            echo "Compilation completed successfully! Generated APK: $APK_FILE"
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "STAGE1_FINISHED_EARLY=true" >> $GITHUB_ENV
           else
-            echo "BUILD_COMPLETE=false" >> $GITHUB_ENV
-            echo "Ninja finished stage with exit code: $NINJA_EXIT"
+            echo "STAGE1_FINISHED_EARLY=false" >> $GITHUB_ENV
           fi
 
-      # 11. CHECKPOINT SAVE & AUTO-DISPATCH (IF NOT FINISHED)
-      - name: Save Checkpoint and Trigger Next Stage
-        if: env.BUILD_COMPLETE != 'true'
+      # 11. STAGE 1: CREATE DRAFT RELEASE
+      - name: Stage 1 - Create Draft Release
+        if: env.ACTIVE_STAGE == 'stage1' && env.STAGE1_FINISHED_EARLY != 'true'
         run: |
-          echo "Compressing checkpoint for next stage..."
+          echo "Compressing complete out/Bare directory..."
           sudo mkdir -p /mnt/draft_upload
           sudo chown -R runner:docker /mnt/draft_upload
           cd /mnt/chromium/src/out/Bare
-
-          tar -cf - \
-            --ignore-failed-read \
-            --exclude='*.log' \
-            --exclude='*.tmp' \
-            --exclude='apks' \
-            . | zstd --fast=1 -T0 | split -b 1900M - /mnt/draft_upload/checkpoint.tar.zst.part_
-
-          # Determine next stage
-          CURRENT="${{ env.ACTIVE_STAGE }}"
-          if [ "$CURRENT" = "stage1" ]; then
-            NEXT_STAGE="stage2"
-            TAG="build-stage1-draft"
-          else
-            NEXT_STAGE="stage3"
-            TAG="build-stage2-draft"
-          fi
-
-          gh release delete "$TAG" --repo ${{ github.repository }} --yes 2>/dev/null || true
-          git push --delete origin "$TAG" 2>/dev/null || true
-
-          echo "Publishing Checkpoint Draft Release ($TAG)..."
-          gh release create "$TAG" /mnt/draft_upload/checkpoint.tar.zst.part_* \
-            --title "Chromium Build Checkpoint ($TAG)" \
-            --notes "Checkpoint objects for $NEXT_STAGE." \
+          tar -cf - --exclude='*.apk' . | zstd -3 -T0 | split -b 1900M - /mnt/draft_upload/checkpoint.tar.zst.part_
+          gh release delete build-stage1-draft --repo ${{ github.repository }} --yes || true
+          git push --delete origin build-stage1-draft 2>/dev/null || true
+          echo "Publishing Draft Release..."
+          gh release create build-stage1-draft /mnt/draft_upload/checkpoint.tar.zst.part_* \
+            --title "Chromium Build Stage 1 (Draft Archive)" \
+            --notes "Stage 1 completed. Contains full out/Bare build graph and compiled objects." \
             --repo ${{ github.repository }} \
             --draft
-
-          echo "Auto-dispatching $NEXT_STAGE..."
-          gh workflow run build-apk.yml -f stage="$NEXT_STAGE" --repo ${{ github.repository }} || true
-          echo "$NEXT_STAGE dispatched successfully!"
+          echo "Auto-triggering Stage 2..."
+          gh workflow run build-apk.yml -f stage=stage2 --repo ${{ github.repository }} || true
+          echo "Stage 2 automatically dispatched!"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 12. PREPARE FINAL RELEASE APK (ON SUCCESS)
+      # 12. STAGE 2: COMPILE TO COMPLETION
+      - name: Stage 2 - Compile to APK Completion
+        if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
+        run: |
+          cd /mnt/chromium/src
+          export DEPOT_TOOLS_METRICS=0
+          export PYTHONUNBUFFERED=1
+          export TERM=dumb
+          echo "Starting Stage 2 compilation to finalize ChromePublic.apk..."
+          /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
+
+      # 13. PREPARE FINAL RELEASE APK
       - name: Prepare Final Release APK
-        if: env.BUILD_COMPLETE == 'true'
+        if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
         run: |
           mkdir -p /mnt/output_apk
-          cp "/mnt/chromium/src/${{ env.FOUND_APK }}" /mnt/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
+          cp /mnt/chromium/src/out/Bare/apks/ChromePublic.apk /mnt/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
           ls -lh /mnt/output_apk/
 
-      # 13. PUBLISH DIRECTLY TO GITHUB RELEASES
+      # 14. PUBLISH DIRECTLY TO GITHUB RELEASES
       - name: Publish APK to GitHub Releases
-        if: env.BUILD_COMPLETE == 'true'
+        if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0-alpha.3-kiwi
@@ -392,24 +370,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 14. CLEANUP INTERMEDIATE DRAFT RELEASES UPON COMPLETION
-      - name: Cleanup Intermediate Draft Releases
-        if: env.BUILD_COMPLETE == 'true'
+      # 15. CLEANUP DRAFT RELEASE UPON FINAL SUCCESS
+      - name: Delete Stage 1 Draft Release
+        if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
         run: |
-          gh release delete build-stage1-draft --repo ${{ github.repository }} --yes 2>/dev/null || true
-          gh release delete build-stage2-draft --repo ${{ github.repository }} --yes 2>/dev/null || true
+          gh release delete build-stage1-draft --repo ${{ github.repository }} --yes || true
           git push --delete origin build-stage1-draft 2>/dev/null || true
-          git push --delete origin build-stage2-draft 2>/dev/null || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 15. DETAILED FAILURE LOGS UPLOAD
-      - name: Upload Detailed Failure Logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-failure-diagnostic-logs
-          path: |
-            /mnt/chromium/src/out/Bare/ninja_build.log
-            /mnt/chromium/src/out/Bare/args.gn
-            /mnt/chromium/src/out/Bare/.ninja_log
