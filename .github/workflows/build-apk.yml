@@ -346,7 +346,7 @@ jobs:
           mkdir -p /mnt/draft_upload
           cd /mnt/chromium/src/out/Bare
 
-          # Ensure placeholders exist so tar never errors on optional missing files
+          # Ensure placeholder exists so tar never errors on optional missing log files
           touch .ninja_log 2>/dev/null || true
 
           # Compress all valid build artifacts with --ignore-failed-read
@@ -358,13 +358,12 @@ jobs:
             --exclude='apks' \
             . | zstd --fast=1 -T0 | split -b 1900M - /mnt/draft_upload/checkpoint.tar.zst.part_
 
-          # Delete old draft release & tag cleanly
-          gh release delete build-stage1-draft --repo ${{ github.repository }} --cleanup-tag --yes || true
+          # Delete existing draft release cleanly if it already exists
+          gh release delete build-stage1-draft --repo ${{ github.repository }} --yes 2>/dev/null || true
           git push --delete origin build-stage1-draft 2>/dev/null || true
 
           echo "Publishing Lightweight Draft Release..."
           gh release create build-stage1-draft /mnt/draft_upload/checkpoint.tar.zst.part_* \
-            --tag "build-stage1-draft" \
             --title "Chromium Build Stage 1 (Draft Archive)" \
             --notes "Stage 1 checkpoint. Lightweight objects only." \
             --repo ${{ github.repository }} \
@@ -379,6 +378,8 @@ jobs:
           echo "Stage 2 triggered successfully!"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+     
      
 
       # 13. STAGE 2: COMPILE TO FINAL APK
