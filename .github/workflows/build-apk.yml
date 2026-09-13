@@ -1,4 +1,4 @@
-name: 2. "Build Bare Browser APK"
+name: "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
@@ -49,29 +49,37 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. SETUP SYSTEM RESOURCES & SWAP
-      - name: Setup System Resources & Acceleration
+      # 1. SETUP SYSTEM RESOURCES, 16GB ZRAM (LZ4) & HIGH-THROUGHPUT DISK
+      - name: Setup System Resources, ZRAM & Acceleration
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
           sudo docker image prune --all --force || true
           sudo apt-get clean || true
+
+          # Configure 16 GB in-memory ZRAM swap with LZ4 compression
           sudo swapoff -a || true
-          sudo rm -f /swapfile /mnt/swapfile || true
-          sudo fallocate -l 16G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=16384 status=progress
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          
+          sudo modprobe zram || true
+          sudo zramctl /dev/zram0 -s 16G -a lz4 || true
+          sudo mkswap /dev/zram0 || true
+          sudo swapon /dev/zram0 -p 100 || true
+
+          # Remount /mnt to eliminate disk write barrier locks and delay journal commits
+          sudo mount -o remount,noatime,nodiratime,commit=600,barrier=0 /mnt 2>/dev/null || true
+
+          # Linux kernel virtual memory tuning for heavy compilation workloads
           sudo sysctl -w fs.file-max=2097152
           sudo sysctl -w vm.max_map_count=262144
-          sudo sysctl -w vm.dirty_ratio=80
-          sudo sysctl -w vm.swappiness=10
+          sudo sysctl -w vm.dirty_ratio=60
+          sudo sysctl -w vm.dirty_background_ratio=20
+          sudo sysctl -w vm.swappiness=100
           sudo sysctl -w vm.vfs_cache_pressure=50
-          free -h
+
+          # Route all temporary files to the optimized /mnt mount
           sudo mkdir -p /mnt/tmp
           sudo chmod 1777 /mnt/tmp
           echo "TMPDIR=/mnt/tmp" >> $GITHUB_ENV
           echo "ACTIVE_STAGE=${{ github.event.inputs.stage || 'stage1' }}" >> $GITHUB_ENV
+          free -h
 
       # 2. INSTALL PREREQUISITES
       - name: Install Prerequisites
@@ -83,23 +91,26 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             git curl python3 build-essential ninja-build patch zstd
 
-      # 3. SETUP DEPOT TOOLS
-      - name: Setup Depot Tools
+      # 3. SETUP DEPOT TOOLS ON /MNT
+      - name: Setup Depot Tools on /mnt
         run: |
-          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /home/runner/depot_tools
-          echo "/home/runner/depot_tools" >> $GITHUB_PATH
-          export PATH="/home/runner/depot_tools:$PATH"
+          sudo mkdir -p /mnt/depot_tools
+          sudo chown -R runner:docker /mnt/depot_tools
+          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git /mnt/depot_tools
+          echo "/mnt/depot_tools" >> $GITHUB_PATH
+          export PATH="/mnt/depot_tools:$PATH"
           mkdir -p ~/.config
-          touch /home/runner/depot_tools/metrics.cfg
-          echo "opt-out" > /home/runner/depot_tools/metrics.cfg
+          touch /mnt/depot_tools/metrics.cfg
+          echo "opt-out" > /mnt/depot_tools/metrics.cfg
           echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
-          /home/runner/depot_tools/update_depot_tools || true
+          /mnt/depot_tools/update_depot_tools || true
 
-      # 4. DOWNLOAD & EXTRACT BASE ARCHIVE
-      - name: Download and Extract Base Archive
+      # 4. DOWNLOAD & EXTRACT BASE ARCHIVE DIRECTLY TO /MNT
+      - name: Download and Extract Base Archive on /mnt
         run: |
-          mkdir -p /home/runner/chromium
-          cd /home/runner/chromium
+          sudo mkdir -p /mnt/chromium
+          sudo chown -R runner:docker /mnt/chromium
+          cd /mnt/chromium
           gh release download chromium-bare-base -p "chromium-bare-base.tar.zst.part_*" --repo ${{ github.repository }}
           cat chromium-bare-base.tar.zst.part_* | zstd -d -T0 | tar -xf -
           rm -f chromium-bare-base.tar.zst.part_*
@@ -109,7 +120,7 @@ jobs:
       # 5. APPLY PATCHES
       - name: Apply Official Bare Patches
         run: |
-          cd /home/runner/chromium/src
+          cd /mnt/chromium/src
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           echo "Applying patches using git am..."
@@ -121,7 +132,7 @@ jobs:
       # 6. INJECT KIWI TAB SWITCHER
       - name: Inject Kiwi Tab Switcher Settings
         run: |
-          cd /home/runner/chromium/src
+          cd /mnt/chromium/src
           cat << 'EOF' > inject_switcher.py
           import os
           pref_tag = '\n    <ListPreference android:key="tab_switcher_type" android:title="Tab switcher" android:summary="%s" android:defaultValue="1" />\n'
@@ -189,24 +200,24 @@ jobs:
       # 7. DOWNLOAD UBLOCK ORIGIN CRX (1.74.0)
       - name: Download uBlock Origin CRX
         run: |
-          mkdir -p /home/runner/chromium/src/chrome/browser/resources/bare
-          curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
+          mkdir -p /mnt/chromium/src/chrome/browser/resources/bare
+          curl -L -f -o /mnt/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
       # 8. STAGE 2: RESTORE DRAFT RELEASE ARCHIVE
       - name: Stage 2 - Restore Archive From Draft Release
         if: env.ACTIVE_STAGE == 'stage2'
         run: |
-          cd /home/runner/chromium/src
+          cd /mnt/chromium/src
           mkdir -p out/Bare
           echo "Checking for draft checkpoint release..."
-          mkdir -p /home/runner/checkpoint_download
-          cd /home/runner/checkpoint_download
+          mkdir -p /mnt/checkpoint_download
+          cd /mnt/checkpoint_download
           gh release download build-stage1-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
           if ls checkpoint.tar.zst.part_* 1> /dev/null 2>&1; then
             echo "Unpacking complete out/Bare from Stage 1 Draft Release..."
-            cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /home/runner/chromium/src/out/Bare/
-            rm -rf /home/runner/checkpoint_download
+            cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /mnt/chromium/src/out/Bare/
+            rm -rf /mnt/checkpoint_download
             echo "Stage 1 build directory restored successfully!"
           else
             echo "Error: Stage 1 draft release not found. Please run stage1 first."
@@ -215,11 +226,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. STAGE 1: CONFIGURE GN BUILD GRAPH
+      # 9. STAGE 1: CONFIGURE HIGH-SPEED GN BUILD GRAPH
       - name: Stage 1 - Configure GN Build Graph
         if: env.ACTIVE_STAGE == 'stage1'
         run: |
-          cd /home/runner/chromium/src
+          cd /mnt/chromium/src
           mkdir -p out/Bare
           cat << 'EOF' > out/Bare/args.gn
           target_os = "android"
@@ -277,22 +288,53 @@ jobs:
           chrome_public_manifest_package = "org.barebrowser"
           android_override_version_code = "801000065"
           android_override_version_name = "1.0.0-alpha.3"
-          EOF
-          /home/runner/depot_tools/gn gen out/Bare
 
-      # 10. STAGE 1: COMPILE (4.5 HOURS)
+          # 1. TOOLCHAIN & COMPILER AST ACCELERATION
+          clang_use_chrome_plugins = false
+          enable_iterator_debugging = false
+          exclude_unwind_tables = true
+          strip_debug_info = true
+          use_lld = true
+
+          # 2. ELIMINATE HEAVY SUBSYSTEMS (~15,000 TARGETS DROPPED)
+          enable_webrtc = false
+          use_dawn = false
+          skia_use_dawn = false
+          enable_webgpu = false
+          enable_rust = false
+          enable_all_rust_features = false
+          enable_vulkan = false
+          angle_enable_vulkan = false
+          enable_dav1d_decoder = false
+          enable_libaom = false
+          enable_remoting = false
+          enable_supervised_users = false
+          enable_autofill_assistant = false
+          enable_offline_pages = false
+          enable_hangout_services_extension = false
+          enable_spellcheck = false
+          enable_printing = false
+          enable_basic_printing = false
+
+          # 3. ANDROID PACKAGING & BYTECODE SHORTCUTS
+          enable_proguard = false
+          enable_resource_allowlist_generation = false
+          EOF
+          /mnt/depot_tools/gn gen out/Bare
+
+      # 10. STAGE 1: COMPILE (4.5 HOURS SAFE WINDOW)
       - name: Stage 1 - Compile Safe Window (4.5 Hours)
         if: env.ACTIVE_STAGE == 'stage1'
         run: |
-          cd /home/runner/chromium/src
+          cd /mnt/chromium/src
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
-          export TERM=dumb
+          export NINJA_STATUS="[%e | %f/%t | %p] "
 
-          echo "Starting Stage 1 compilation (4.5 hours safe window)..."
+          echo "Starting Stage 1 compilation (4.5 hours safe window with load throttling)..."
           set +e
-          timeout 16200 /home/runner/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
-          EXIT_CODE=${PIPESTATUS[0]}
+          timeout 16200 /mnt/depot_tools/ninja -C out/Bare -j 4 -l 3.8 chrome_public_apk
+          EXIT_CODE=$?
           set -e
 
           if [ $EXIT_CODE -eq 0 ]; then
@@ -301,50 +343,55 @@ jobs:
             echo "STAGE1_FINISHED_EARLY=false" >> $GITHUB_ENV
           fi
 
-      # 11. STAGE 1: CREATE DRAFT RELEASE (NOT ARTIFACT)
+      # 11. STAGE 1: CREATE FAST DRAFT RELEASE
       - name: Stage 1 - Create Draft Release
         if: env.ACTIVE_STAGE == 'stage1' && env.STAGE1_FINISHED_EARLY != 'true'
         run: |
-          echo "Compressing complete out/Bare directory..."
-          mkdir -p /home/runner/draft_upload
-          cd /home/runner/chromium/src/out/Bare
-          tar -cf - --exclude='*.apk' . | zstd -3 -T0 | split -b 1900M - /home/runner/draft_upload/checkpoint.tar.zst.part_
+          echo "Compressing out/Bare using multi-threaded fast zstd..."
+          mkdir -p /mnt/draft_upload
+          cd /mnt/chromium/src/out/Bare
+
+          tar -cf - \
+            --exclude='*.log' \
+            --exclude='*.tmp' \
+            --exclude='apks' \
+            . | zstd --fast=3 -T0 | split -b 1900M - /mnt/draft_upload/checkpoint.tar.zst.part_
 
           gh release delete build-stage1-draft --repo ${{ github.repository }} --yes || true
           git push --delete origin build-stage1-draft 2>/dev/null || true
 
           echo "Publishing Draft Release..."
-          gh release create build-stage1-draft /home/runner/draft_upload/checkpoint.tar.zst.part_* \
+          gh release create build-stage1-draft /mnt/draft_upload/checkpoint.tar.zst.part_* \
             --title "Chromium Build Stage 1 (Draft Archive)" \
-            --notes "Stage 1 completed. Contains full out/Bare build graph and compiled objects." \
+            --notes "Stage 1 checkpoint. Fully optimized out/Bare directory." \
             --repo ${{ github.repository }} \
             --draft
 
-          echo "Auto-triggering Stage 2..."
+          echo "Auto-dispatching Stage 2..."
           gh workflow run "Build Bare Browser APK" -f stage=stage2 --repo ${{ github.repository }}
-          echo "Stage 2 automatically dispatched!"
+          echo "Stage 2 triggered!"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 12. STAGE 2: COMPILE TO COMPLETION
+      # 12. STAGE 2: COMPILE TO FINAL APK
       - name: Stage 2 - Compile to APK Completion
         if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
         run: |
-          cd /home/runner/chromium/src
+          cd /mnt/chromium/src
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
-          export TERM=dumb
+          export NINJA_STATUS="[%e | %f/%t | %p] "
 
           echo "Starting Stage 2 compilation to finalize ChromePublic.apk..."
-          /home/runner/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
+          /mnt/depot_tools/ninja -C out/Bare -j 4 -l 3.8 chrome_public_apk
 
       # 13. PREPARE FINAL RELEASE APK
-      - name: Prepare Final Release APK
+      - name: Prepare Release APK
         if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
         run: |
-          mkdir -p /home/runner/output_apk
-          cp /home/runner/chromium/src/out/Bare/apks/ChromePublic.apk /home/runner/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
-          ls -lh /home/runner/output_apk/
+          mkdir -p /mnt/output_apk
+          cp /mnt/chromium/src/out/Bare/apks/ChromePublic.apk /mnt/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
+          ls -lh /mnt/output_apk/
 
       # 14. PUBLISH DIRECTLY TO GITHUB RELEASES
       - name: Publish APK to GitHub Releases
@@ -354,7 +401,7 @@ jobs:
           tag_name: v1.0.0-alpha.3-kiwi
           name: "Bare Browser v1.0.0 (with Kiwi Tab Switcher)"
           body: "Bare Browser v1.0.0-alpha.3 ARM64 with Kiwi Tab Switcher and uBlock Origin 1.74.0"
-          files: /home/runner/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
+          files: /mnt/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
           draft: false
           prerelease: false
         env:
