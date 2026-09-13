@@ -1,4 +1,4 @@
-name: 2. "Build Bare Browser APK"
+name: "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       stage:
         description: 'Select stage to run (stage1, stage2, or stage3)'
         required: true
-        default: 'stage2'
+        default: 'stage3'
         type: choice
         options:
           - stage1
@@ -44,7 +44,7 @@ jobs:
 
   build:
     needs: validate-patches
-    name: Build Bare Browser ARM64 (${{ github.event.inputs.stage || 'stage2' }})
+    name: Build Bare Browser ARM64 (${{ github.event.inputs.stage || 'stage3' }})
     runs-on: ubuntu-24.04
     timeout-minutes: 360
 
@@ -84,7 +84,7 @@ jobs:
           mkdir -p /mnt/tmp
           chmod 1777 /mnt/tmp
           echo "TMPDIR=/mnt/tmp" >> $GITHUB_ENV
-          echo "ACTIVE_STAGE=${{ github.event.inputs.stage || 'stage2' }}" >> $GITHUB_ENV
+          echo "ACTIVE_STAGE=${{ github.event.inputs.stage || 'stage3' }}" >> $GITHUB_ENV
           free -h
 
       # 2. INSTALL BUILD TOOLS
@@ -322,7 +322,7 @@ jobs:
           if [ -n "$APK_FILE" ]; then
             echo "BUILD_COMPLETE=true" >> $GITHUB_ENV
             echo "FOUND_APK=$APK_FILE" >> $GITHUB_ENV
-            echo "Compilation completed successfully!"
+            echo "Compilation completed successfully! Generated APK: $APK_FILE"
           else
             echo "BUILD_COMPLETE=false" >> $GITHUB_ENV
             echo "Ninja finished stage with exit code: $NINJA_EXIT"
@@ -365,9 +365,7 @@ jobs:
             --draft
 
           echo "Auto-dispatching $NEXT_STAGE..."
-          WF_NAME="${{ github.workflow }}"
-          gh workflow run "$WF_NAME" -f stage="$NEXT_STAGE" --repo ${{ github.repository }} || \
-          gh workflow run "Build Bare Browser APK" -f stage="$NEXT_STAGE" --repo ${{ github.repository }} || true
+          gh workflow run build-apk.yml -f stage="$NEXT_STAGE" --repo ${{ github.repository }} || true
           echo "$NEXT_STAGE dispatched successfully!"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
