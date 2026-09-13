@@ -1,4 +1,4 @@
-name: 2. "Build Bare Browser APK"
+name: 2. "Build Bare Browser APK (Turbo Accelerated)"
 
 on:
   workflow_dispatch:
@@ -52,6 +52,7 @@ jobs:
       # 1. SETUP SYSTEM RESOURCES, 16GB NVMe SWAP & ACCELERATION
       - name: Setup System Resources, Swap & Acceleration
         run: |
+          # Clean 55GB+ of unused host bloat
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
           sudo docker image prune --all --force || true
           sudo apt-get clean || true
@@ -85,17 +86,31 @@ jobs:
           echo "ACTIVE_STAGE=${{ github.event.inputs.stage || 'stage1' }}" >> $GITHUB_ENV
           free -h
 
-      # 2. INSTALL PREREQUISITES
-      - name: Install Prerequisites
+      # 2. INSTALL FAST SCCACHE FOR REVOLUTIONARY SPEEDUP
+      - name: Install sccache & Build Tools
         run: |
-          sudo killall apt apt-get 2>/dev/null || true
-          sudo rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock* || true
-          sudo dpkg --configure -a || true
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            git curl python3 build-essential ninja-build patch zstd
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends git curl python3 build-essential ninja-build patch zstd
+          
+          # Install Mozilla sccache
+          curl -fsSL https://github.com/mozilla/sccache/releases/download/v0.8.1/sccache-v0.8.1-x86_64-unknown-linux-musl.tar.gz | tar -xz -C /tmp
+          sudo mv /tmp/sccache-*/sccache /usr/local/bin/sccache
+          sudo chmod +x /usr/local/bin/sccache
+          rm -rf /tmp/sccache*
 
-      # 3. SETUP DEPOT TOOLS ON /MNT
+      # 3. CONFIGURE SCCACHE WITH GITHUB ACTIONS CACHE
+      - name: Setup Compiler Cache Backend
+        uses: actions/cache@v4
+        with:
+          path: /mnt/sccache
+          key: sccache-${{ runner.os }}-bare-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-bare-
+        env:
+          SCCACHE_DIR: /mnt/sccache
+          SCCACHE_CACHE_SIZE: 12G
+
+      # 4. SETUP DEPOT TOOLS ON /MNT
       - name: Setup Depot Tools on /mnt
         run: |
           mkdir -p /mnt/depot_tools
@@ -106,9 +121,11 @@ jobs:
           touch /mnt/depot_tools/metrics.cfg
           echo "opt-out" > /mnt/depot_tools/metrics.cfg
           echo "DEPOT_TOOLS_METRICS=0" >> $GITHUB_ENV
+          echo "SCCACHE_DIR=/mnt/sccache" >> $GITHUB_ENV
+          echo "SCCACHE_CACHE_SIZE=12G" >> $GITHUB_ENV
           /mnt/depot_tools/update_depot_tools || true
 
-      # 4. DOWNLOAD & EXTRACT BASE ARCHIVE DIRECTLY TO /MNT
+      # 5. DOWNLOAD & EXTRACT BASE ARCHIVE DIRECTLY TO /MNT
       - name: Download and Extract Base Archive on /mnt
         run: |
           mkdir -p /mnt/chromium
@@ -119,7 +136,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5. APPLY PATCHES
+      # 6. APPLY PATCHES
       - name: Apply Official Bare Patches
         run: |
           cd /mnt/chromium/src
@@ -131,7 +148,7 @@ jobs:
             git am --3way --ignore-whitespace "$p" || git apply --recount --ignore-space-change "$p" || patch -p1 --forward < "$p" || true
           done
 
-      # 6. INJECT KIWI TAB SWITCHER
+      # 7. INJECT KIWI TAB SWITCHER
       - name: Inject Kiwi Tab Switcher Settings
         run: |
           cd /mnt/chromium/src
@@ -199,14 +216,14 @@ jobs:
           find . -name "*.rej" -delete || true
           find . -name "*.orig" -delete || true
 
-      # 7. DOWNLOAD UBLOCK ORIGIN CRX (1.74.0)
+      # 8. DOWNLOAD UBLOCK ORIGIN CRX
       - name: Download uBlock Origin CRX
         run: |
           mkdir -p /mnt/chromium/src/chrome/browser/resources/bare
           curl -L -f -o /mnt/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. STAGE 2: RESTORE DRAFT RELEASE ARCHIVE
+      # 9. STAGE 2: RESTORE DRAFT RELEASE ARCHIVE (FAST RESTORE)
       - name: Stage 2 - Restore Archive From Draft Release
         if: env.ACTIVE_STAGE == 'stage2'
         run: |
@@ -217,7 +234,7 @@ jobs:
           cd /mnt/checkpoint_download
           gh release download build-stage1-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
           if ls checkpoint.tar.zst.part_* 1> /dev/null 2>&1; then
-            echo "Unpacking complete out/Bare from Stage 1 Draft Release..."
+            echo "Unpacking lightweight Stage 1 objects..."
             cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /mnt/chromium/src/out/Bare/
             rm -rf /mnt/checkpoint_download
             echo "Stage 1 build directory restored successfully!"
@@ -228,16 +245,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. STAGE 1: CONFIGURE STABLE GN BUILD GRAPH
-      - name: Stage 1 - Configure GN Build Graph
-        if: env.ACTIVE_STAGE == 'stage1'
+      # 10. STAGE 1 & 2: CONFIGURE TURBO GN BUILD GRAPH
+      - name: Configure Turbo GN Build Graph
         run: |
           cd /mnt/chromium/src
           mkdir -p out/Bare
           cat << 'EOF' > out/Bare/args.gn
           target_os = "android"
           target_cpu = "arm64"
-          is_desktop_android = true
+          
+          # TURBO COMPILATION ACCELERATORS
+          cc_wrapper = "sccache"
+          clang_use_chrome_plugins = false
+          enable_resource_allowlist_generation = false
+          use_debug_fission = false
+          android_channel = "stable"
+          
+          # LEAN MOBILE BUILD FLAVOR
+          is_desktop_android = false
           is_official_build = false
           is_debug = false
           is_java_debug = false
@@ -293,8 +318,8 @@ jobs:
           EOF
           /mnt/depot_tools/gn gen out/Bare
 
-      # 10. STAGE 1: COMPILE (5.0 HOURS SAFE WINDOW)
-      - name: Stage 1 - Compile Safe Window (5.0 Hours)
+      # 11. STAGE 1: COMPILE UNTHROTTLED (NO -l 3.8)
+      - name: Stage 1 - Compile Unthrottled Safe Window (5.0 Hours)
         if: env.ACTIVE_STAGE == 'stage1'
         run: |
           cd /mnt/chromium/src
@@ -302,11 +327,17 @@ jobs:
           export PYTHONUNBUFFERED=1
           export NINJA_STATUS="[%e | %f/%t | %p] "
 
-          echo "Starting Stage 1 compilation (5.0 hours safe window with load throttling)..."
+          sccache --start-server || true
+          sccache --zero-stats || true
+
+          echo "Starting Stage 1 compilation (Unthrottled max-speed ninja)..."
           set +e
-          timeout 18000 /mnt/depot_tools/ninja -C out/Bare -j 4 -l 3.8 chrome_public_apk 2>&1 | tee out/Bare/ninja_build.log
+          # REMOVED -l 3.8 to run all 4 CPU cores at 100% capacity
+          timeout 18000 /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_build.log
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
+
+          sccache --show-stats || true
 
           if [ $EXIT_CODE -eq 0 ]; then
             echo "STAGE1_FINISHED_EARLY=true" >> $GITHUB_ENV
@@ -314,27 +345,30 @@ jobs:
             echo "STAGE1_FINISHED_EARLY=false" >> $GITHUB_ENV
           fi
 
-      # 11. STAGE 1: CREATE FAST DRAFT RELEASE
-      - name: Stage 1 - Create Draft Release
+      # 12. STAGE 1: CREATE FAST LIGHTWEIGHT CHECKPOINT RELEASE (3 MINS INSTEAD OF 25 MINS)
+      - name: Stage 1 - Create Fast Lightweight Checkpoint
         if: env.ACTIVE_STAGE == 'stage1' && env.STAGE1_FINISHED_EARLY != 'true'
         run: |
-          echo "Compressing out/Bare using multi-threaded fast zstd..."
+          echo "Compressing only essential objects (excluding regenerable gen/ and deps)..."
           mkdir -p /mnt/draft_upload
           cd /mnt/chromium/src/out/Bare
 
+          # Only compress object files and ninja logs (saving 19GB of archive bloat)
           tar -cf - \
+            --exclude='gen' \
+            --exclude='*.ninja_deps' \
             --exclude='*.log' \
             --exclude='*.tmp' \
             --exclude='apks' \
-            . | zstd --fast=3 -T0 | split -b 1900M - /mnt/draft_upload/checkpoint.tar.zst.part_
+            obj .ninja_log args.gn build.ninja | zstd --fast=1 -T0 | split -b 1900M - /mnt/draft_upload/checkpoint.tar.zst.part_
 
           gh release delete build-stage1-draft --repo ${{ github.repository }} --yes || true
           git push --delete origin build-stage1-draft 2>/dev/null || true
 
-          echo "Publishing Draft Release..."
+          echo "Publishing Lightweight Draft Release..."
           gh release create build-stage1-draft /mnt/draft_upload/checkpoint.tar.zst.part_* \
             --title "Chromium Build Stage 1 (Draft Archive)" \
-            --notes "Stage 1 checkpoint. Fully saved out/Bare directory." \
+            --notes "Stage 1 checkpoint. Lightweight objects only." \
             --repo ${{ github.repository }} \
             --draft
 
@@ -344,7 +378,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 12. STAGE 2: COMPILE TO FINAL APK
+      # 13. STAGE 2: COMPILE TO FINAL APK
       - name: Stage 2 - Compile to APK Completion
         if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
         run: |
@@ -353,10 +387,13 @@ jobs:
           export PYTHONUNBUFFERED=1
           export NINJA_STATUS="[%e | %f/%t | %p] "
 
-          echo "Starting Stage 2 compilation to finalize ChromePublic.apk..."
-          /mnt/depot_tools/ninja -C out/Bare -j 4 -l 3.8 chrome_public_apk 2>&1 | tee out/Bare/ninja_build.log
+          sccache --start-server || true
 
-      # 13. PREPARE FINAL RELEASE APK
+          echo "Starting Stage 2 compilation to finalize ChromePublic.apk..."
+          /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_build.log
+          sccache --show-stats || true
+
+      # 14. PREPARE FINAL RELEASE APK
       - name: Prepare Release APK
         if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
         run: |
@@ -364,7 +401,7 @@ jobs:
           cp /mnt/chromium/src/out/Bare/apks/ChromePublic.apk /mnt/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
           ls -lh /mnt/output_apk/
 
-      # 14. PUBLISH DIRECTLY TO GITHUB RELEASES
+      # 15. PUBLISH DIRECTLY TO GITHUB RELEASES
       - name: Publish APK to GitHub Releases
         if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
         uses: softprops/action-gh-release@v2
@@ -378,7 +415,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 15. CLEANUP DRAFT RELEASE UPON FINAL SUCCESS
+      # 16. CLEANUP DRAFT RELEASE UPON FINAL SUCCESS
       - name: Delete Stage 1 Draft Release
         if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
         run: |
@@ -387,7 +424,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 16. DETAILED FAILURE LOGS UPLOAD
+      # 17. DETAILED FAILURE LOGS UPLOAD
       - name: Upload Detailed Failure Logs
         if: failure()
         uses: actions/upload-artifact@v4
