@@ -182,32 +182,11 @@ jobs:
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. RESTORE EXISTING CHECKPOINT (PRIOR TO GN)
-      - name: Restore Existing Checkpoint
+      # 8. CONFIGURE GN ARGS FIRST
+      - name: Configure GN Args
         run: |
           cd /home/runner/chromium/src
           mkdir -p out/Bare
-          echo "Checking for build checkpoint release..."
-          if gh release view chromium-build-checkpoint --repo ${{ github.repository }} >/dev/null 2>&1; then
-            echo "Checkpoint found! Downloading and extracting out/Bare..."
-            mkdir -p /home/runner/checkpoint_download
-            cd /home/runner/checkpoint_download
-            gh release download chromium-build-checkpoint -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
-            if ls checkpoint.tar.zst.part_* 1> /dev/null 2>&1; then
-              cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /home/runner/chromium/src/out/Bare/
-              rm -rf /home/runner/checkpoint_download
-              echo "Checkpoint unpacked successfully."
-            fi
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 9. CONFIGURE GN AND FORCE OBJECT TIMESTAMPS FORWARD
-      - name: Configure GN Args & Touch Object Timestamps
-        run: |
-          cd /home/runner/chromium/src
-          mkdir -p out/Bare
-
           cat << 'EOF' > out/Bare/args.gn
           target_os = "android"
           target_cpu = "arm64"
@@ -265,21 +244,32 @@ jobs:
           android_override_version_code = "801000065"
           android_override_version_name = "1.0.0-alpha.3"
           EOF
-
-          echo "Generating build files..."
           /home/runner/depot_tools/gn gen out/Bare
 
-          # THIS PREVENTS STARTING OVER FROM FILE 1:
-          if [ -d out/Bare/obj ]; then
-            echo "Setting future mtime on all restored object files..."
-            find out/Bare/obj out/Bare/gen -type f -exec touch -d "+2 hours" {} + 2>/dev/null || true
-            if [ -f out/Bare/.ninja_log ]; then
-              touch -d "+2 hours" out/Bare/.ninja_log out/Bare/.ninja_deps 2>/dev/null || true
-            fi
-            echo "Timestamps updated! Ninja will skip pre-built targets."
-          fi
+      # 9. RESTORE EXISTING CHECKPOINT & ALIGN TIMESTAMPS
+      - name: Restore Checkpoint & Align Timestamps
+        run: |
+          cd /home/runner/chromium/src
+          if gh release view chromium-build-checkpoint --repo ${{ github.repository }} >/dev/null 2>&1; then
+            echo "Checkpoint found! Downloading and extracting out/Bare..."
+            mkdir -p /home/runner/checkpoint_download
+            cd /home/runner/checkpoint_download
+            gh release download chromium-build-checkpoint -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
+            if ls checkpoint.tar.zst.part_* 1> /dev/null 2>&1; then
+              cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /home/runner/chromium/src/out/Bare/
+              rm -rf /home/runner/checkpoint_download
 
-      # 10. COMPILE DIRECTLY TO APK (NO TIME LIMIT INTERRUPTIONS)
+              cd /home/runner/chromium/src/out/Bare
+              echo "Aligning file timestamps so Ninja resumes properly without loop..."
+              find obj gen -type f -exec touch {} + 2>/dev/null || true
+              touch build.ninja args.gn .ninja_log .ninja_deps 2>/dev/null || true
+              echo "Checkpoint successfully restored and aligned!"
+            fi
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 10. COMPILE DIRECTLY TO APK
       - name: Compile APK
         id: compile
         run: |
@@ -288,7 +278,7 @@ jobs:
           export PYTHONUNBUFFERED=1
           export TERM=dumb
 
-          echo "Starting Ninja compilation directly for ChromePublic.apk..."
+          echo "Starting Ninja compilation for ChromePublic.apk..."
           /home/runner/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
 
       # 11. PREPARE FINAL RELEASE APK
