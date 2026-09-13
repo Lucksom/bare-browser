@@ -201,76 +201,75 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. ENSURE BUILD FILES & PREVENT NINJA REBUILD
+      # 9. ENSURE BUILD FILES & SYNCHRONIZE TIMESTAMPS
       - name: Configure Build Graph & Synchronize Timestamps
         run: |
           cd /home/runner/chromium/src
-          # If args.gn or build.ninja were not in the checkpoint, create them
+          mkdir -p out/Bare
           if [ ! -f out/Bare/args.gn ]; then
-            cat << 'EOF' > out/Bare/args.gn
-            target_os = "android"
-            target_cpu = "arm64"
-            is_desktop_android = true
-            is_official_build = false
-            is_debug = false
-            is_java_debug = false
-            is_component_build = false
-            dcheck_always_on = false
-            android_static_analysis = "off"
-            treat_warnings_as_errors = false
-            build_apk_secondary_abi = false
-            disable_android_lint = true
-            use_errorprone_java_compiler = false
-            locales = ["en-US", "en-GB"]
-            use_siso = false
-            concurrent_links = 1
-            enable_base_tracing = false
-            use_perfetto_client_library = false
-            optimize_webui = false
-            v8_enable_fast_mksnapshot = true
-            symbol_level = 0
-            blink_symbol_level = 0
-            v8_symbol_level = 0
-            use_thin_lto = false
-            use_v8_context_snapshot = false
-            clang_use_default_sample_profile = false
-            use_remoteexec = false
-            use_reclient = false
-            v8_enable_debugging_features = false
-            v8_enable_object_print = false
-            v8_enable_verify_heap = false
-            proprietary_codecs = true
-            ffmpeg_branding = "Chrome"
-            enable_pdf = false
-            enable_plugins = false
-            enable_print_preview = false
-            enable_paint_preview = false
-            enable_nacl = false
-            enable_vr = false
-            enable_media_remoting = false
-            use_mlkit_for_aicore = false
-            enable_glic_internal_resources = false
-            enable_reporting = false
-            enable_service_discovery = false
-            enable_mdns = false
-            enable_arcore = false
-            enable_cardboard = false
-            enable_openxr = false
-            enable_web_speech = false
-            enable_feed_v2 = false
-            safe_browsing_mode = 0
-            disable_fieldtrial_testing_config = true
-            chrome_public_manifest_package = "org.barebrowser"
-            android_override_version_code = "801000065"
-            android_override_version_name = "1.0.0-alpha.3"
-            EOF
+          cat << 'EOF' > out/Bare/args.gn
+          target_os = "android"
+          target_cpu = "arm64"
+          is_desktop_android = true
+          is_official_build = false
+          is_debug = false
+          is_java_debug = false
+          is_component_build = false
+          dcheck_always_on = false
+          android_static_analysis = "off"
+          treat_warnings_as_errors = false
+          build_apk_secondary_abi = false
+          disable_android_lint = true
+          use_errorprone_java_compiler = false
+          locales = ["en-US", "en-GB"]
+          use_siso = false
+          concurrent_links = 1
+          enable_base_tracing = false
+          use_perfetto_client_library = false
+          optimize_webui = false
+          v8_enable_fast_mksnapshot = true
+          symbol_level = 0
+          blink_symbol_level = 0
+          v8_symbol_level = 0
+          use_thin_lto = false
+          use_v8_context_snapshot = false
+          clang_use_default_sample_profile = false
+          use_remoteexec = false
+          use_reclient = false
+          v8_enable_debugging_features = false
+          v8_enable_object_print = false
+          v8_enable_verify_heap = false
+          proprietary_codecs = true
+          ffmpeg_branding = "Chrome"
+          enable_pdf = false
+          enable_plugins = false
+          enable_print_preview = false
+          enable_paint_preview = false
+          enable_nacl = false
+          enable_vr = false
+          enable_media_remoting = false
+          use_mlkit_for_aicore = false
+          enable_glic_internal_resources = false
+          enable_reporting = false
+          enable_service_discovery = false
+          enable_mdns = false
+          enable_arcore = false
+          enable_cardboard = false
+          enable_openxr = false
+          enable_web_speech = false
+          enable_feed_v2 = false
+          safe_browsing_mode = 0
+          disable_fieldtrial_testing_config = true
+          chrome_public_manifest_package = "org.barebrowser"
+          android_override_version_code = "801000065"
+          android_override_version_name = "1.0.0-alpha.3"
+          EOF
           fi
 
           if [ ! -f out/Bare/build.ninja ]; then
             /home/runner/depot_tools/gn gen out/Bare
           fi
 
-          # Synchronize all object files so Ninja treats them as fresh
           echo "Synchronizing timestamps on restored targets..."
           find out/Bare/obj out/Bare/gen -type f -exec touch {} + 2>/dev/null || true
           touch out/Bare/build.ninja out/Bare/args.gn 2>/dev/null || true
@@ -279,7 +278,7 @@ jobs:
           fi
           echo "Timestamps synchronized."
 
-      # 10. COMPILE STRAIGHT TO APK (NO TIME LIMIT INTERRUPTIONS)
+      # 10. COMPILE STRAIGHT TO APK
       - name: Compile APK
         id: compile
         run: |
