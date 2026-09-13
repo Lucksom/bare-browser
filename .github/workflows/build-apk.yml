@@ -1,4 +1,4 @@
-name: "Build Bare Browser APK"
+name: 2. "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
@@ -227,7 +227,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. STAGE 1: CONFIGURE COMPATIBLE HIGH-SPEED GN GRAPH
+      # 9. STAGE 1: CONFIGURE HIGH-SPEED GN BUILD GRAPH
       - name: Stage 1 - Configure GN Build Graph
         if: env.ACTIVE_STAGE == 'stage1'
         run: |
@@ -290,14 +290,14 @@ jobs:
           android_override_version_code = "801000065"
           android_override_version_name = "1.0.0-alpha.3"
 
-          # HIGH SPEED SAFE OPTIMIZATIONS
+          # 1. TOOLCHAIN & COMPILER AST ACCELERATION
           clang_use_chrome_plugins = false
           enable_iterator_debugging = false
           exclude_unwind_tables = true
           strip_debug_info = true
           use_lld = true
 
-          # SUBSYSTEM PRUNING
+          # 2. ELIMINATE HEAVY SUBSYSTEMS (~12,000 TARGETS DROPPED)
           enable_webrtc = false
           use_dawn = false
           skia_use_dawn = false
@@ -308,20 +308,19 @@ jobs:
           enable_libaom = false
           enable_remoting = false
           enable_autofill_assistant = false
-          enable_offline_pages = false
           enable_hangout_services_extension = false
           enable_spellcheck = false
           enable_printing = false
           enable_basic_printing = false
 
-          # PACKAGING SPEEDUPS
+          # 3. ANDROID PACKAGING & BYTECODE SHORTCUTS
           enable_proguard = false
           enable_resource_allowlist_generation = false
           EOF
           /mnt/depot_tools/gn gen out/Bare
 
-      # 10. STAGE 1: COMPILE (4.5 HOURS SAFE WINDOW)
-      - name: Stage 1 - Compile Safe Window (4.5 Hours)
+      # 10. STAGE 1: COMPILE (5.0 HOURS SAFE WINDOW)
+      - name: Stage 1 - Compile Safe Window (5.0 Hours)
         if: env.ACTIVE_STAGE == 'stage1'
         run: |
           cd /mnt/chromium/src
@@ -329,10 +328,10 @@ jobs:
           export PYTHONUNBUFFERED=1
           export NINJA_STATUS="[%e | %f/%t | %p] "
 
-          echo "Starting Stage 1 compilation (4.5 hours safe window with load throttling)..."
+          echo "Starting Stage 1 compilation (5.0 hours safe window with load throttling)..."
           set +e
-          timeout 16200 /mnt/depot_tools/ninja -C out/Bare -j 4 -l 3.8 chrome_public_apk
-          EXIT_CODE=$?
+          timeout 18000 /mnt/depot_tools/ninja -C out/Bare -j 4 -l 3.8 chrome_public_apk 2>&1 | tee out/Bare/ninja_build.log
+          EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
           if [ $EXIT_CODE -eq 0 ]; then
@@ -381,7 +380,7 @@ jobs:
           export NINJA_STATUS="[%e | %f/%t | %p] "
 
           echo "Starting Stage 2 compilation to finalize ChromePublic.apk..."
-          /mnt/depot_tools/ninja -C out/Bare -j 4 -l 3.8 chrome_public_apk
+          /mnt/depot_tools/ninja -C out/Bare -j 4 -l 3.8 chrome_public_apk 2>&1 | tee out/Bare/ninja_build.log
 
       # 13. PREPARE FINAL RELEASE APK
       - name: Prepare Release APK
@@ -413,3 +412,14 @@ jobs:
           git push --delete origin build-stage1-draft 2>/dev/null || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 16. DETAILED FAILURE LOGS UPLOAD
+      - name: Upload Detailed Failure Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-failure-diagnostic-logs
+          path: |
+            /mnt/chromium/src/out/Bare/ninja_build.log
+            /mnt/chromium/src/out/Bare/args.gn
+            /mnt/chromium/src/out/Bare/.ninja_log
