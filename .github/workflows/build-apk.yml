@@ -2,6 +2,15 @@ name: "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Select Build Stage'
+        required: true
+        default: 'stage1'
+        type: choice
+        options:
+          - stage1
+          - stage2
 
 permissions:
   contents: write
@@ -35,7 +44,7 @@ jobs:
   build:
     needs: validate-patches
     runs-on: ubuntu-24.04
-    timeout-minutes: 340
+    timeout-minutes: 360
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -62,6 +71,7 @@ jobs:
           sudo mkdir -p /mnt/tmp
           sudo chmod 1777 /mnt/tmp
           echo "TMPDIR=/mnt/tmp" >> $GITHUB_ENV
+          echo "ACTIVE_STAGE=${{ github.event.inputs.stage || 'stage1' }}" >> $GITHUB_ENV
 
       # 2. INSTALL PREREQUISITES
       - name: Install Prerequisites
@@ -183,160 +193,162 @@ jobs:
           curl -L -f -o /home/runner/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. RESTORE COMPLETE OUT/BARE FROM CHECKPOINT (IF EXISTS)
-      - name: Restore Complete Build Directory
+      # 8. STAGE 2: RESTORE DRAFT RELEASE ARCHIVE
+      - name: Stage 2 - Restore Archive From Draft Release
+        if: env.ACTIVE_STAGE == 'stage2'
         run: |
           cd /home/runner/chromium/src
           mkdir -p out/Bare
-          if gh release view chromium-build-checkpoint --repo ${{ github.repository }} >/dev/null 2>&1; then
-            echo "Checkpoint found! Downloading complete out/Bare..."
-            mkdir -p /home/runner/checkpoint_download
-            cd /home/runner/checkpoint_download
-            gh release download chromium-build-checkpoint -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
-            if ls checkpoint.tar.zst.part_* 1> /dev/null 2>&1; then
-              cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /home/runner/chromium/src/out/Bare/
-              rm -rf /home/runner/checkpoint_download
-              echo "Complete out/Bare restored."
-              echo "HAS_CHECKPOINT=true" >> $GITHUB_ENV
-            else
-              echo "HAS_CHECKPOINT=false" >> $GITHUB_ENV
-            fi
+          echo "Checking for draft checkpoint release..."
+          mkdir -p /home/runner/checkpoint_download
+          cd /home/runner/checkpoint_download
+          gh release download build-stage1-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
+          if ls checkpoint.tar.zst.part_* 1> /dev/null 2>&1; then
+            echo "Unpacking complete out/Bare from Stage 1 Draft Release..."
+            cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /home/runner/chromium/src/out/Bare/
+            rm -rf /home/runner/checkpoint_download
+            echo "Stage 1 build directory restored successfully!"
           else
-            echo "HAS_CHECKPOINT=false" >> $GITHUB_ENV
+            echo "Error: Stage 1 draft release not found. Please run stage1 first."
+            exit 1
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. CONFIGURE GN ONLY IF CLEAN BUILD
-      - name: Configure GN Args
+      # 9. STAGE 1: CONFIGURE GN BUILD GRAPH
+      - name: Stage 1 - Configure GN Build Graph
+        if: env.ACTIVE_STAGE == 'stage1'
         run: |
           cd /home/runner/chromium/src
-          if [ "$HAS_CHECKPOINT" != "true" ] || [ ! -f out/Bare/build.ninja ]; then
-            mkdir -p out/Bare
-            cat << 'EOF' > out/Bare/args.gn
-            target_os = "android"
-            target_cpu = "arm64"
-            is_desktop_android = true
-            is_official_build = false
-            is_debug = false
-            is_java_debug = false
-            is_component_build = false
-            dcheck_always_on = false
-            android_static_analysis = "off"
-            treat_warnings_as_errors = false
-            build_apk_secondary_abi = false
-            disable_android_lint = true
-            use_errorprone_java_compiler = false
-            locales = ["en-US", "en-GB"]
-            use_siso = false
-            concurrent_links = 1
-            enable_base_tracing = false
-            use_perfetto_client_library = false
-            optimize_webui = false
-            v8_enable_fast_mksnapshot = true
-            symbol_level = 0
-            blink_symbol_level = 0
-            v8_symbol_level = 0
-            use_thin_lto = false
-            use_v8_context_snapshot = false
-            clang_use_default_sample_profile = false
-            use_remoteexec = false
-            use_reclient = false
-            v8_enable_debugging_features = false
-            v8_enable_object_print = false
-            v8_enable_verify_heap = false
-            proprietary_codecs = true
-            ffmpeg_branding = "Chrome"
-            enable_pdf = false
-            enable_plugins = false
-            enable_print_preview = false
-            enable_paint_preview = false
-            enable_nacl = false
-            enable_vr = false
-            enable_media_remoting = false
-            use_mlkit_for_aicore = false
-            enable_glic_internal_resources = false
-            enable_reporting = false
-            enable_service_discovery = false
-            enable_mdns = false
-            enable_arcore = false
-            enable_cardboard = false
-            enable_openxr = false
-            enable_web_speech = false
-            enable_feed_v2 = false
-            safe_browsing_mode = 0
-            disable_fieldtrial_testing_config = true
-            chrome_public_manifest_package = "org.barebrowser"
-            android_override_version_code = "801000065"
-            android_override_version_name = "1.0.0-alpha.3"
-            EOF
-            echo "Running gn gen for initial build..."
-            /home/runner/depot_tools/gn gen out/Bare
-          else
-            echo "Restored existing build graph and generators. Skipping gn gen to keep timestamps matching."
-          fi
+          mkdir -p out/Bare
+          cat << 'EOF' > out/Bare/args.gn
+          target_os = "android"
+          target_cpu = "arm64"
+          is_desktop_android = true
+          is_official_build = false
+          is_debug = false
+          is_java_debug = false
+          is_component_build = false
+          dcheck_always_on = false
+          android_static_analysis = "off"
+          treat_warnings_as_errors = false
+          build_apk_secondary_abi = false
+          disable_android_lint = true
+          use_errorprone_java_compiler = false
+          locales = ["en-US", "en-GB"]
+          use_siso = false
+          concurrent_links = 1
+          enable_base_tracing = false
+          use_perfetto_client_library = false
+          optimize_webui = false
+          v8_enable_fast_mksnapshot = true
+          symbol_level = 0
+          blink_symbol_level = 0
+          v8_symbol_level = 0
+          use_thin_lto = false
+          use_v8_context_snapshot = false
+          clang_use_default_sample_profile = false
+          use_remoteexec = false
+          use_reclient = false
+          v8_enable_debugging_features = false
+          v8_enable_object_print = false
+          v8_enable_verify_heap = false
+          proprietary_codecs = true
+          ffmpeg_branding = "Chrome"
+          enable_pdf = false
+          enable_plugins = false
+          enable_print_preview = false
+          enable_paint_preview = false
+          enable_nacl = false
+          enable_vr = false
+          enable_media_remoting = false
+          use_mlkit_for_aicore = false
+          enable_glic_internal_resources = false
+          enable_reporting = false
+          enable_service_discovery = false
+          enable_mdns = false
+          enable_arcore = false
+          enable_cardboard = false
+          enable_openxr = false
+          enable_web_speech = false
+          enable_feed_v2 = false
+          safe_browsing_mode = 0
+          disable_fieldtrial_testing_config = true
+          chrome_public_manifest_package = "org.barebrowser"
+          android_override_version_code = "801000065"
+          android_override_version_name = "1.0.0-alpha.3"
+          EOF
+          /home/runner/depot_tools/gn gen out/Bare
 
-      # 10. COMPILE (4.5 HOUR SAFE WINDOW)
-      - name: Compile APK
-        id: compile
+      # 10. STAGE 1: COMPILE (4.5 HOURS)
+      - name: Stage 1 - Compile Safe Window (4.5 Hours)
+        if: env.ACTIVE_STAGE == 'stage1'
         run: |
           cd /home/runner/chromium/src
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
           export TERM=dumb
 
-          echo "Starting Ninja compilation (4.5 hour safe window)..."
+          echo "Starting Stage 1 compilation (4.5 hours safe window)..."
           set +e
           timeout 16200 /home/runner/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
           if [ $EXIT_CODE -eq 0 ]; then
-            echo "COMPILATION_COMPLETED=true" >> $GITHUB_ENV
-            echo "APK compilation completed successfully!"
-          elif [ $EXIT_CODE -eq 124 ]; then
-            echo "COMPILATION_COMPLETED=false" >> $GITHUB_ENV
-            echo "4.5-hour safe mark reached. Saving complete state..."
+            echo "STAGE1_FINISHED_EARLY=true" >> $GITHUB_ENV
           else
-            echo "Compilation error encountered (exit code: $EXIT_CODE)"
-            exit $EXIT_CODE
+            echo "STAGE1_FINISHED_EARLY=false" >> $GITHUB_ENV
           fi
 
-      # 11. SAVE ENTIRE OUT/BARE & DISPATCH STAGE 2
-      - name: Save Checkpoint & Auto-Trigger Stage 2
-        if: env.COMPILATION_COMPLETED == 'false'
+      # 11. STAGE 1: CREATE DRAFT RELEASE (NOT ARTIFACT)
+      - name: Stage 1 - Create Draft Release
+        if: env.ACTIVE_STAGE == 'stage1' && env.STAGE1_FINISHED_EARLY != 'true'
         run: |
-          echo "Compressing complete out/Bare build directory..."
-          mkdir -p /home/runner/checkpoint_upload
+          echo "Compressing complete out/Bare directory..."
+          mkdir -p /home/runner/draft_upload
           cd /home/runner/chromium/src/out/Bare
-          tar -cf - --exclude='*.apk' . | zstd -3 -T0 | split -b 1900M - /home/runner/checkpoint_upload/checkpoint.tar.zst.part_
+          tar -cf - --exclude='*.apk' . | zstd -3 -T0 | split -b 1900M - /home/runner/draft_upload/checkpoint.tar.zst.part_
 
-          gh release delete chromium-build-checkpoint --repo ${{ github.repository }} --yes || true
-          git push --delete origin chromium-build-checkpoint 2>/dev/null || true
+          gh release delete build-stage1-draft --repo ${{ github.repository }} --yes || true
+          git push --delete origin build-stage1-draft 2>/dev/null || true
 
-          echo "Uploading complete checkpoint..."
-          gh release create chromium-build-checkpoint /home/runner/checkpoint_upload/checkpoint.tar.zst.part_* \
-            --title "Chromium Build Checkpoint" \
-            --notes "Complete out/Bare saved. Stage 2 will resume and output APK." \
+          echo "Publishing Draft Release..."
+          gh release create build-stage1-draft /home/runner/draft_upload/checkpoint.tar.zst.part_* \
+            --title "Chromium Build Stage 1 (Draft Archive)" \
+            --notes "Stage 1 completed. Contains full out/Bare build graph and compiled objects." \
             --repo ${{ github.repository }} \
-            --prerelease
+            --draft
 
-          echo "Dispatching Stage 2 automatically..."
-          gh workflow run "Build Bare Browser APK" --repo ${{ github.repository }}
+          echo "Auto-triggering Stage 2..."
+          gh workflow run "Build Bare Browser APK" -f stage=stage2 --repo ${{ github.repository }}
+          echo "Stage 2 automatically dispatched!"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 12. PREPARE FINAL RELEASE APK
-      - name: Prepare Release APK
-        if: env.COMPILATION_COMPLETED == 'true'
+      # 12. STAGE 2: COMPILE TO COMPLETION
+      - name: Stage 2 - Compile to APK Completion
+        if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
+        run: |
+          cd /home/runner/chromium/src
+          export DEPOT_TOOLS_METRICS=0
+          export PYTHONUNBUFFERED=1
+          export TERM=dumb
+
+          echo "Starting Stage 2 compilation to finalize ChromePublic.apk..."
+          /home/runner/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
+
+      # 13. PREPARE FINAL RELEASE APK
+      - name: Prepare Final Release APK
+        if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
         run: |
           mkdir -p /home/runner/output_apk
           cp /home/runner/chromium/src/out/Bare/apks/ChromePublic.apk /home/runner/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
           ls -lh /home/runner/output_apk/
 
-      # 13. PUBLISH DIRECTLY TO GITHUB RELEASES
+      # 14. PUBLISH DIRECTLY TO GITHUB RELEASES
       - name: Publish APK to GitHub Releases
-        if: env.COMPILATION_COMPLETED == 'true'
+        if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0-alpha.3-kiwi
@@ -348,11 +360,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 14. CLEANUP CHECKPOINT AFTER SUCCESSFUL APK RELEASE
-      - name: Cleanup Checkpoint Release
-        if: env.COMPILATION_COMPLETED == 'true'
+      # 15. CLEANUP DRAFT RELEASE UPON FINAL SUCCESS
+      - name: Delete Stage 1 Draft Release
+        if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
         run: |
-          gh release delete chromium-build-checkpoint --repo ${{ github.repository }} --yes || true
-          git push --delete origin chromium-build-checkpoint 2>/dev/null || true
+          gh release delete build-stage1-draft --repo ${{ github.repository }} --yes || true
+          git push --delete origin build-stage1-draft 2>/dev/null || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
