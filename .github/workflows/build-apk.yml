@@ -1,4 +1,4 @@
-name: 2. "Build Bare Browser APK"
+name: "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
@@ -227,7 +227,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. STAGE 1: CONFIGURE HIGH-SPEED GN BUILD GRAPH
+      # 9. STAGE 1: CONFIGURE STABLE GN BUILD GRAPH
       - name: Stage 1 - Configure GN Build Graph
         if: env.ACTIVE_STAGE == 'stage1'
         run: |
@@ -289,33 +289,6 @@ jobs:
           chrome_public_manifest_package = "org.barebrowser"
           android_override_version_code = "801000065"
           android_override_version_name = "1.0.0-alpha.3"
-
-          # 1. TOOLCHAIN & COMPILER AST ACCELERATION
-          clang_use_chrome_plugins = false
-          enable_iterator_debugging = false
-          exclude_unwind_tables = true
-          strip_debug_info = true
-          use_lld = true
-
-          # 2. ELIMINATE HEAVY SUBSYSTEMS (~12,000 TARGETS DROPPED)
-          enable_webrtc = false
-          use_dawn = false
-          skia_use_dawn = false
-          enable_webgpu = false
-          enable_vulkan = false
-          angle_enable_vulkan = false
-          enable_dav1d_decoder = false
-          enable_libaom = false
-          enable_remoting = false
-          enable_autofill_assistant = false
-          enable_hangout_services_extension = false
-          enable_spellcheck = false
-          enable_printing = false
-          enable_basic_printing = false
-
-          # 3. ANDROID PACKAGING & BYTECODE SHORTCUTS
-          enable_proguard = false
-          enable_resource_allowlist_generation = false
           EOF
           /mnt/depot_tools/gn gen out/Bare
 
@@ -360,7 +333,7 @@ jobs:
           echo "Publishing Draft Release..."
           gh release create build-stage1-draft /mnt/draft_upload/checkpoint.tar.zst.part_* \
             --title "Chromium Build Stage 1 (Draft Archive)" \
-            --notes "Stage 1 checkpoint. Fully optimized out/Bare directory." \
+            --notes "Stage 1 checkpoint. Fully saved out/Bare directory." \
             --repo ${{ github.repository }} \
             --draft
 
