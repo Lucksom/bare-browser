@@ -11,6 +11,7 @@ on:
         options:
           - stage1
           - stage2
+          - stage3
 
 permissions:
   contents: write
@@ -43,6 +44,7 @@ jobs:
 
   build:
     needs: validate-patches
+    name: Build Bare Browser ARM64 (${{ github.event.inputs.stage || 'stage1' }})
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
@@ -56,7 +58,7 @@ jobs:
           sudo docker image prune --all --force || true
           sudo apt-get clean || true
 
-          # Create 16GB Swap on high-speed /mnt (avoids filling root disk)
+          # Create 16GB Swap on high-speed /mnt
           sudo swapoff -a || true
           sudo rm -f /swapfile /mnt/swapfile || true
           sudo fallocate -l 16G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=16384 status=progress
@@ -207,32 +209,40 @@ jobs:
           curl -L -f -o /mnt/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. STAGE 2: RESTORE DRAFT RELEASE ARCHIVE
-      - name: Stage 2 - Restore Archive From Draft Release
-        if: env.ACTIVE_STAGE == 'stage2'
+      # 8. RESTORE STAGE 1 OR STAGE 2 DRAFT CHECKPOINT
+      - name: Restore Checkpoint Archive
+        if: env.ACTIVE_STAGE == 'stage2' || env.ACTIVE_STAGE == 'stage3'
         run: |
           cd /mnt/chromium/src
           mkdir -p out/Bare
-          echo "Checking for draft checkpoint release..."
+          echo "Checking for draft checkpoint release for ${{ env.ACTIVE_STAGE }}..."
           sudo mkdir -p /mnt/checkpoint_download
           sudo chown -R runner:docker /mnt/checkpoint_download
           cd /mnt/checkpoint_download
-          gh release download build-stage1-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
+
+          if [ "${{ env.ACTIVE_STAGE }}" = "stage3" ]; then
+            echo "Attempting to download build-stage2-draft (fallback to build-stage1-draft)..."
+            gh release download build-stage2-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || \
+            gh release download build-stage1-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
+          else
+            echo "Downloading build-stage1-draft..."
+            gh release download build-stage1-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
+          fi
+
           if ls checkpoint.tar.zst.part_* 1> /dev/null 2>&1; then
-            echo "Unpacking complete out/Bare from Stage 1 Draft Release..."
+            echo "Unpacking checkpoint objects into out/Bare..."
             cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /mnt/chromium/src/out/Bare/
             rm -rf /mnt/checkpoint_download
-            echo "Stage 1 build directory restored successfully!"
+            echo "Checkpoint restored successfully!"
           else
-            echo "Error: Stage 1 draft release not found. Please run stage1 first."
+            echo "Error: No checkpoint release found for ${{ env.ACTIVE_STAGE }}."
             exit 1
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. STAGE 1: CONFIGURE GN BUILD GRAPH
-      - name: Stage 1 - Configure GN Build Graph
-        if: env.ACTIVE_STAGE == 'stage1'
+      # 9. CONFIGURE GN BUILD GRAPH & SYNC TIMESTAMPS
+      - name: Configure GN Build Graph & Sync Ninja Manifest
         run: |
           cd /mnt/chromium/src
           mkdir -p out/Bare
@@ -295,70 +305,112 @@ jobs:
           EOF
           /mnt/depot_tools/gn gen out/Bare
 
-      # 10. STAGE 1: COMPILE (4.5 HOURS)
-      - name: Stage 1 - Compile Safe Window (4.5 Hours)
-        if: env.ACTIVE_STAGE == 'stage1'
+      # 10. STAGE 1 & 2: COMPILE (4.5 HOURS SAFE WINDOW)
+      - name: Stage 1 & 2 - Safe Window Compilation (4.5 Hours)
+        if: env.ACTIVE_STAGE == 'stage1' || env.ACTIVE_STAGE == 'stage2'
         run: |
           cd /mnt/chromium/src
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
           export TERM=dumb
-          echo "Starting Stage 1 compilation (4.5 hours safe window)..."
+          echo "Starting compilation for ${{ env.ACTIVE_STAGE }} (4.5 hours safe window)..."
           set +e
           timeout 16200 /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
-          if [ $EXIT_CODE -eq 0 ]; then
-            echo "STAGE1_FINISHED_EARLY=true" >> $GITHUB_ENV
+
+          # Check if compilation already finished early
+          APK_FILE=$(find out/Bare -type f -name "*.apk" | head -n 1)
+          if [ -n "$APK_FILE" ]; then
+            echo "STAGE_FINISHED_EARLY=true" >> $GITHUB_ENV
+            echo "FOUND_APK=$APK_FILE" >> $GITHUB_ENV
+            echo "Compilation completed early with APK: $APK_FILE"
           else
-            echo "STAGE1_FINISHED_EARLY=false" >> $GITHUB_ENV
+            echo "STAGE_FINISHED_EARLY=false" >> $GITHUB_ENV
           fi
 
-      # 11. STAGE 1: CREATE DRAFT RELEASE
-      - name: Stage 1 - Create Draft Release
-        if: env.ACTIVE_STAGE == 'stage1' && env.STAGE1_FINISHED_EARLY != 'true'
+      # 11. STAGE 1: SAVE DRAFT AND AUTO-TRIGGER STAGE 2
+      - name: Stage 1 - Create Draft Release & Trigger Stage 2
+        if: env.ACTIVE_STAGE == 'stage1' && env.STAGE_FINISHED_EARLY != 'true'
         run: |
-          echo "Compressing complete out/Bare directory..."
+          echo "Compressing Stage 1 out/Bare directory..."
           sudo mkdir -p /mnt/draft_upload
           sudo chown -R runner:docker /mnt/draft_upload
           cd /mnt/chromium/src/out/Bare
           tar -cf - --exclude='*.apk' . | zstd -3 -T0 | split -b 1900M - /mnt/draft_upload/checkpoint.tar.zst.part_
-          gh release delete build-stage1-draft --repo ${{ github.repository }} --yes || true
+
+          gh release delete build-stage1-draft --repo ${{ github.repository }} --yes 2>/dev/null || true
           git push --delete origin build-stage1-draft 2>/dev/null || true
-          echo "Publishing Draft Release..."
+
+          echo "Publishing Stage 1 Draft Release..."
           gh release create build-stage1-draft /mnt/draft_upload/checkpoint.tar.zst.part_* \
             --title "Chromium Build Stage 1 (Draft Archive)" \
-            --notes "Stage 1 completed. Contains full out/Bare build graph and compiled objects." \
+            --notes "Stage 1 checkpoint. Contains full out/Bare build graph." \
             --repo ${{ github.repository }} \
             --draft
+
           echo "Auto-triggering Stage 2..."
           gh workflow run build-apk.yml -f stage=stage2 --repo ${{ github.repository }} || true
-          echo "Stage 2 automatically dispatched!"
+          echo "Stage 2 successfully dispatched!"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 12. STAGE 2: COMPILE TO COMPLETION
-      - name: Stage 2 - Compile to APK Completion
-        if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
+      # 12. STAGE 2: SAVE DRAFT AND AUTO-TRIGGER STAGE 3
+      - name: Stage 2 - Create Draft Release & Trigger Stage 3
+        if: env.ACTIVE_STAGE == 'stage2' && env.STAGE_FINISHED_EARLY != 'true'
+        run: |
+          echo "Compressing Stage 2 out/Bare directory..."
+          sudo mkdir -p /mnt/draft_upload
+          sudo chown -R runner:docker /mnt/draft_upload
+          cd /mnt/chromium/src/out/Bare
+          tar -cf - --exclude='*.apk' . | zstd -3 -T0 | split -b 1900M - /mnt/draft_upload/checkpoint.tar.zst.part_
+
+          gh release delete build-stage2-draft --repo ${{ github.repository }} --yes 2>/dev/null || true
+          git push --delete origin build-stage2-draft 2>/dev/null || true
+
+          echo "Publishing Stage 2 Draft Release..."
+          gh release create build-stage2-draft /mnt/draft_upload/checkpoint.tar.zst.part_* \
+            --title "Chromium Build Stage 2 (Draft Archive)" \
+            --notes "Stage 2 checkpoint. Advanced out/Bare build graph." \
+            --repo ${{ github.repository }} \
+            --draft
+
+          echo "Auto-triggering Stage 3..."
+          gh workflow run build-apk.yml -f stage=stage3 --repo ${{ github.repository }} || true
+          echo "Stage 3 successfully dispatched!"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 13. STAGE 3: COMPILE TO COMPLETION
+      - name: Stage 3 - Compile to Final APK Completion
+        if: env.ACTIVE_STAGE == 'stage3' || env.STAGE_FINISHED_EARLY == 'true'
         run: |
           cd /mnt/chromium/src
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
           export TERM=dumb
-          echo "Starting Stage 2 compilation to finalize ChromePublic.apk..."
+          echo "Starting Stage 3 final compilation to produce ChromePublic.apk..."
           /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
 
-      # 13. PREPARE FINAL RELEASE APK
+          APK_FILE=$(find out/Bare -type f -name "*.apk" | head -n 1)
+          if [ -n "$APK_FILE" ]; then
+            echo "FOUND_APK=$APK_FILE" >> $GITHUB_ENV
+          else
+            echo "Error: APK not found after compilation."
+            exit 1
+          fi
+
+      # 14. PREPARE FINAL RELEASE APK
       - name: Prepare Final Release APK
-        if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
+        if: env.ACTIVE_STAGE == 'stage3' || env.STAGE_FINISHED_EARLY == 'true'
         run: |
           mkdir -p /mnt/output_apk
-          cp /mnt/chromium/src/out/Bare/apks/ChromePublic.apk /mnt/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
+          cp "/mnt/chromium/src/${{ env.FOUND_APK }}" /mnt/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
           ls -lh /mnt/output_apk/
 
-      # 14. PUBLISH DIRECTLY TO GITHUB RELEASES
+      # 15. PUBLISH DIRECTLY TO GITHUB RELEASES
       - name: Publish APK to GitHub Releases
-        if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
+        if: env.ACTIVE_STAGE == 'stage3' || env.STAGE_FINISHED_EARLY == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0-alpha.3-kiwi
@@ -370,11 +422,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 15. CLEANUP DRAFT RELEASE UPON FINAL SUCCESS
-      - name: Delete Stage 1 Draft Release
-        if: env.ACTIVE_STAGE == 'stage2' || env.STAGE1_FINISHED_EARLY == 'true'
+      # 16. CLEANUP INTERMEDIATE DRAFT RELEASES UPON SUCCESS
+      - name: Cleanup Intermediate Draft Releases
+        if: env.ACTIVE_STAGE == 'stage3' || env.STAGE_FINISHED_EARLY == 'true'
         run: |
-          gh release delete build-stage1-draft --repo ${{ github.repository }} --yes || true
+          gh release delete build-stage1-draft --repo ${{ github.repository }} --yes 2>/dev/null || true
+          gh release delete build-stage2-draft --repo ${{ github.repository }} --yes 2>/dev/null || true
           git push --delete origin build-stage1-draft 2>/dev/null || true
+          git push --delete origin build-stage2-draft 2>/dev/null || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
