@@ -1,4 +1,4 @@
-name: "Build Bare Browser APK"
+name: 2. "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
@@ -213,15 +213,15 @@ jobs:
           curl -L -f -o /mnt/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. PRE-TOUCH ALL SOURCE FILES TO PREVENT MTIME INVALIDATION
-      - name: Force Old Timestamps on All Source Files
+      # 8. BLANKET PRE-TOUCH ALL SOURCE & BUILD DEFINITION FILES TO 2020-01-01
+      - name: Force Old Timestamps on Entire Source Tree
         if: env.ACTIVE_STAGE != 'stage1'
         run: |
-          echo "Setting all source files to 2020-01-01 so checkpoint objects are always newer..."
-          find /mnt/chromium/src -type f \( -name "*.cc" -o -name "*.h" -o -name "*.java" -o -name "*.mojom" -o -name "*.idl" -o -name "*.xml" -o -name "*.json" -o -name "*.js" -o -name "*.ts" \) -exec touch -d "2020-01-01" {} +
-          echo "Source files pre-dated successfully."
+          echo "Setting ALL files in src tree (including BUILD.gn, *.gni, scripts) to 2020-01-01..."
+          find /mnt/chromium/src -mindepth 1 -not -path "*/out/*" -type f -exec touch -d "2020-01-01" {} +
+          echo "Entire source tree successfully back-dated."
 
-      # 9. RESTORE CHECKPOINT DRAFT FROM PREVIOUS STAGE
+      # 9. RESTORE CHECKPOINT DRAFT AND TOUCH ALL OUTPUTS TO NOW
       - name: Restore Checkpoint Archive
         if: env.ACTIVE_STAGE != 'stage1'
         run: |
@@ -246,20 +246,19 @@ jobs:
             TARGET_TAG="build-stage1-draft"
           fi
 
-          echo "Attempting download of $TARGET_TAG..."
+          echo "Downloading $TARGET_TAG..."
           gh release download "$TARGET_TAG" -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} 2>/dev/null || \
-          gh release download build-stage3-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} 2>/dev/null || \
           gh release download build-stage2-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
 
           if ls checkpoint.tar.zst.part_* 1> /dev/null 2>&1; then
-            echo "Unpacking checkpoint objects into out/Bare..."
+            echo "Extracting checkpoint into out/Bare..."
             cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /mnt/chromium/src/out/Bare/
             rm -rf /mnt/checkpoint_download
 
-            # Touch all extracted build outputs to 'now' so Ninja considers every object newer than source files
-            echo "Touching all compiled objects to current timestamp to guarantee they are kept..."
-            find /mnt/chromium/src/out/Bare -type f \( -name "*.o" -o -name "*.obj" -o -name "*.stamp" -o -name "*.a" -o -name "*.so" \) -exec touch {} +
-            echo "Checkpoint restored and all compiled objects protected!"
+            # BLANKET TOUCH: Touch EVERYTHING in out/Bare (build.ninja, .ninja_log, .ninja_deps, .o, etc.)
+            echo "Touching EVERYTHING in out/Bare to 'now' so Ninja never auto-runs gn gen or invalidates outputs..."
+            find /mnt/chromium/src/out/Bare -type f -exec touch {} +
+            echo "Checkpoint outputs touched and fully protected!"
           else
             echo "Error: No checkpoint release found."
             exit 1
@@ -349,13 +348,17 @@ jobs:
           echo $! > /mnt/monitor.pid
           echo "Resource monitor started with PID $(cat /mnt/monitor.pid)"
 
-      # 12. SAFE WINDOW COMPILATION (4.5 HOURS) WITH TIMESTAMPED CONSOLE
+      # 12. SAFE WINDOW COMPILATION (4.5 HOURS)
       - name: Safe Window Compilation (4.5 Hours)
         run: |
           cd /mnt/chromium/src
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
           export TERM=dumb
+
+          echo "Verifying build.ninja freshness against BUILD.gn:"
+          stat -c 'build.ninja: %y' out/Bare/build.ninja 2>/dev/null || true
+          stat -c 'BUILD.gn:     %y' BUILD.gn 2>/dev/null || true
 
           echo "Starting compilation for ${{ env.ACTIVE_STAGE }} (4.5 hours safe window)..."
           set +e
