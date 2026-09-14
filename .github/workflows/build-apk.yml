@@ -74,11 +74,12 @@ jobs:
           sudo chmod -R 777 /mnt || true
           sudo chown -R runner:docker /mnt || true
 
-          # Linux kernel virtual memory tuning
+          # Linux kernel virtual memory tuning for UNTHROTTLED COMPILATION
           sudo sysctl -w fs.file-max=2097152
           sudo sysctl -w vm.max_map_count=262144
           sudo sysctl -w vm.dirty_ratio=80
-          sudo sysctl -w vm.swappiness=10
+          sudo sysctl -w vm.dirty_background_ratio=5
+          sudo sysctl -w vm.swappiness=1
           sudo sysctl -w vm.vfs_cache_pressure=50
 
           mkdir -p /mnt/tmp
@@ -210,7 +211,7 @@ jobs:
           curl -L -f -o /mnt/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. RESTORE DRAFT CHECKPOINT (STAGE 2, 3, OR 4)
+      # 8. RESTORE CHECKPOINT (STAGE 2, 3, OR 4)
       - name: Restore Checkpoint Archive
         if: env.ACTIVE_STAGE != 'stage1'
         run: |
@@ -226,9 +227,11 @@ jobs:
             gh release download build-stage3-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} 2>/dev/null || \
             gh release download build-stage2-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
           elif [ "$STAGE" = "stage3" ]; then
+            echo "Downloading build-stage2-draft for Stage 3..."
             gh release download build-stage2-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} 2>/dev/null || \
             gh release download build-stage1-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
           else
+            echo "Downloading build-stage1-draft for Stage 2..."
             gh release download build-stage1-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
           fi
 
@@ -237,9 +240,9 @@ jobs:
             cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /mnt/chromium/src/out/Bare/
             rm -rf /mnt/checkpoint_download
 
-            # Timestamp Synchronization: Make build.ninja older than .o files so Ninja never invalidates compiled objects
-            find /mnt/chromium/src/out/Bare -name "build.ninja*" -exec touch -d "4 hours ago" {} +
-            echo "Checkpoint restored and timestamps synchronized successfully!"
+            # Timestamp Synchronization: Touch build.ninja to 1 day ago so Ninja NEVER invalidates compiled .o files
+            find /mnt/chromium/src/out/Bare -name "build.ninja*" -exec touch -d "1 day ago" {} +
+            echo "Checkpoint restored and timestamps protected successfully!"
           else
             echo "Error: No checkpoint release found for ${{ env.ACTIVE_STAGE }}."
             exit 1
@@ -312,18 +315,19 @@ jobs:
           EOF
           /mnt/depot_tools/gn gen out/Bare
 
-      # 10. STAGES 1, 2, 3: SAFE WINDOW COMPILATION (4.0 HOURS)
-      - name: Stage 1, 2, 3 - Safe Window Compilation (4.0 Hours)
+      # 10. STAGES 1, 2, 3: SAFE WINDOW COMPILATION (4.5 HOURS)
+      - name: Stage 1, 2, 3 - Safe Window Compilation (4.5 Hours)
         if: env.ACTIVE_STAGE != 'stage4'
         run: |
           cd /mnt/chromium/src
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
           export TERM=dumb
-          echo "Starting compilation for ${{ env.ACTIVE_STAGE }} (4.0 hours safe window)..."
+
+          echo "Starting unthrottled compilation for ${{ env.ACTIVE_STAGE }} (all 4 cores at full speed)..."
           set +e
-          # 14,400s = 4.0h Safe Window
-          timeout 14400 /mnt/depot_tools/ninja -C out/Bare -j 4 -l 3.8 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
+          # 16,200s = 4.5h Safe Window at full 4-core speed (-j 4, NO load limits)
+          timeout 16200 /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
@@ -374,7 +378,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 12. STAGE 4: FINAL COMPILATION TO COMPLETION
+      # 12. STAGE 4: FINAL COMPILATION (4.5 HOURS)
       - name: Stage 4 - Compile to Final APK Completion
         if: env.ACTIVE_STAGE == 'stage4' || env.STAGE_FINISHED_EARLY == 'true'
         run: |
@@ -382,8 +386,9 @@ jobs:
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
           export TERM=dumb
+
           echo "Starting Stage 4 final compilation to produce ChromePublic.apk..."
-          /mnt/depot_tools/ninja -C out/Bare -j 4 -l 3.8 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
+          /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
 
           APK_FILE=$(find out/Bare -type f -name "*.apk" | head -n 1)
           if [ -n "$APK_FILE" ]; then
