@@ -120,9 +120,26 @@ jobs:
           sudo mkdir -p /mnt/chromium
           sudo chown -R runner:docker /mnt/chromium
           cd /mnt/chromium
-          gh release download chromium-bare-base -p "chromium-bare-base.tar.zst.part_*" --repo ${{ github.repository }}
+          echo "Starting base archive download from release..."
+          
+          # Retry loop with 3 attempts to prevent CDN stalls
+          for i in 1 2 3; do
+            echo "Download attempt $i..."
+            if gh release download chromium-bare-base -p "chromium-bare-base.tar.zst.part_*" --repo ${{ github.repository }} --skip-existing; then
+              echo "Download successful!"
+              break
+            fi
+            echo "Retrying download in 10 seconds..."
+            sleep 10
+          done
+
+          echo "Downloaded parts:"
+          ls -lh chromium-bare-base.tar.zst.part_*
+
+          echo "Decompressing base archive directly to /mnt/chromium..."
           cat chromium-bare-base.tar.zst.part_* | zstd -d -T0 | tar -xf -
           rm -f chromium-bare-base.tar.zst.part_*
+          echo "Base archive extracted successfully!"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
