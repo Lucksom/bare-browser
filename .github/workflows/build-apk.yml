@@ -13,6 +13,8 @@ on:
           - stage2
           - stage3
           - stage4
+          - stage5
+          - stage6
 
 permissions:
   contents: write
@@ -96,7 +98,7 @@ jobs:
           sudo dpkg --configure -a || true
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            git curl python3 build-essential ninja-build patch zstd
+            git curl python3 build-essential ninja-build patch zstd moreutils
 
       # 3. SETUP DEPOT TOOLS ON /MNT
       - name: Setup Depot Tools
@@ -211,46 +213,61 @@ jobs:
           curl -L -f -o /mnt/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. RESTORE CHECKPOINT (STAGE 2, 3, OR 4)
+      # 8. PRE-TOUCH ALL SOURCE FILES TO PREVENT MTIME INVALIDATION
+      - name: Force Old Timestamps on All Source Files
+        if: env.ACTIVE_STAGE != 'stage1'
+        run: |
+          echo "Setting all source files to 2020-01-01 so checkpoint objects are always newer..."
+          find /mnt/chromium/src -type f \( -name "*.cc" -o -name "*.h" -o -name "*.java" -o -name "*.mojom" -o -name "*.idl" -o -name "*.xml" -o -name "*.json" -o -name "*.js" -o -name "*.ts" \) -exec touch -d "2020-01-01" {} +
+          echo "Source files pre-dated successfully."
+
+      # 9. RESTORE CHECKPOINT DRAFT FROM PREVIOUS STAGE
       - name: Restore Checkpoint Archive
         if: env.ACTIVE_STAGE != 'stage1'
         run: |
           cd /mnt/chromium/src
           mkdir -p out/Bare
-          echo "Checking for draft checkpoint release for ${{ env.ACTIVE_STAGE }}..."
+          echo "Restoring draft checkpoint for ${{ env.ACTIVE_STAGE }}..."
           sudo mkdir -p /mnt/checkpoint_download
           sudo chown -R runner:docker /mnt/checkpoint_download
           cd /mnt/checkpoint_download
 
           STAGE="${{ env.ACTIVE_STAGE }}"
-          if [ "$STAGE" = "stage4" ]; then
-            gh release download build-stage3-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} 2>/dev/null || \
-            gh release download build-stage2-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
+          TARGET_TAG=""
+          if [ "$STAGE" = "stage6" ]; then
+            TARGET_TAG="build-stage5-draft"
+          elif [ "$STAGE" = "stage5" ]; then
+            TARGET_TAG="build-stage4-draft"
+          elif [ "$STAGE" = "stage4" ]; then
+            TARGET_TAG="build-stage3-draft"
           elif [ "$STAGE" = "stage3" ]; then
-            echo "Downloading build-stage2-draft for Stage 3..."
-            gh release download build-stage2-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} 2>/dev/null || \
-            gh release download build-stage1-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
-          else
-            echo "Downloading build-stage1-draft for Stage 2..."
-            gh release download build-stage1-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
+            TARGET_TAG="build-stage2-draft"
+          elif [ "$STAGE" = "stage2" ]; then
+            TARGET_TAG="build-stage1-draft"
           fi
+
+          echo "Attempting download of $TARGET_TAG..."
+          gh release download "$TARGET_TAG" -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} 2>/dev/null || \
+          gh release download build-stage3-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} 2>/dev/null || \
+          gh release download build-stage2-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
 
           if ls checkpoint.tar.zst.part_* 1> /dev/null 2>&1; then
             echo "Unpacking checkpoint objects into out/Bare..."
             cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /mnt/chromium/src/out/Bare/
             rm -rf /mnt/checkpoint_download
 
-            # Timestamp Synchronization: Touch build.ninja to 1 day ago so Ninja NEVER invalidates compiled .o files
-            find /mnt/chromium/src/out/Bare -name "build.ninja*" -exec touch -d "1 day ago" {} +
-            echo "Checkpoint restored and timestamps protected successfully!"
+            # Touch all extracted build outputs to 'now' so Ninja considers every object newer than source files
+            echo "Touching all compiled objects to current timestamp to guarantee they are kept..."
+            find /mnt/chromium/src/out/Bare -type f \( -name "*.o" -o -name "*.obj" -o -name "*.stamp" -o -name "*.a" -o -name "*.so" \) -exec touch {} +
+            echo "Checkpoint restored and all compiled objects protected!"
           else
-            echo "Error: No checkpoint release found for ${{ env.ACTIVE_STAGE }}."
+            echo "Error: No checkpoint release found."
             exit 1
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. STAGE 1 ONLY: CONFIGURE GN BUILD GRAPH
+      # 10. STAGE 1 ONLY: CONFIGURE GN BUILD GRAPH
       - name: Stage 1 - Configure GN Build Graph
         if: env.ACTIVE_STAGE == 'stage1'
         run: |
@@ -315,21 +332,39 @@ jobs:
           EOF
           /mnt/depot_tools/gn gen out/Bare
 
-      # 10. STAGES 1, 2, 3: SAFE WINDOW COMPILATION (4.5 HOURS)
-      - name: Stage 1, 2, 3 - Safe Window Compilation (4.5 Hours)
-        if: env.ACTIVE_STAGE != 'stage4'
+      # 11. START BACKGROUND RESOURCE MONITOR
+      - name: Start Background Resource Monitor
+        run: |
+          mkdir -p /mnt/chromium/src/out/Bare
+          (
+            while true; do
+              echo "=== $(date '+%H:%M:%S') ==="
+              uptime
+              free -h | grep -E "Mem|Swap"
+              vmstat 1 2 | tail -1
+              echo "-------------------------------------"
+              sleep 30
+            done
+          ) > /mnt/chromium/src/out/Bare/resource_log.txt 2>&1 &
+          echo $! > /mnt/monitor.pid
+          echo "Resource monitor started with PID $(cat /mnt/monitor.pid)"
+
+      # 12. SAFE WINDOW COMPILATION (4.5 HOURS) WITH TIMESTAMPED CONSOLE
+      - name: Safe Window Compilation (4.5 Hours)
         run: |
           cd /mnt/chromium/src
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
           export TERM=dumb
 
-          echo "Starting unthrottled compilation for ${{ env.ACTIVE_STAGE }} (all 4 cores at full speed)..."
+          echo "Starting compilation for ${{ env.ACTIVE_STAGE }} (4.5 hours safe window)..."
           set +e
-          # 16,200s = 4.5h Safe Window at full 4-core speed (-j 4, NO load limits)
-          timeout 16200 /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
+          timeout 16200 /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | ts '%H:%M:%S' | tee out/Bare/ninja_console.log
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
+
+          # Stop resource monitor
+          kill $(cat /mnt/monitor.pid) 2>/dev/null || true
 
           APK_FILE=$(find out/Bare -type f -name "*.apk" | head -n 1)
           if [ -n "$APK_FILE" ]; then
@@ -340,11 +375,23 @@ jobs:
             echo "STAGE_FINISHED_EARLY=false" >> $GITHUB_ENV
           fi
 
-      # 11. CHECKPOINT SAVE & AUTO-DISPATCH NEXT STAGE
+      # 13. UPLOAD RESOURCE LOG ARTIFACT
+      - name: Upload Resource Monitor Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resource-log-${{ env.ACTIVE_STAGE }}
+          path: /mnt/chromium/src/out/Bare/resource_log.txt
+          retention-days: 3
+
+      # 14. CHECKPOINT SAVE & AUTO-DISPATCH NEXT STAGE
       - name: Create Draft Release and Trigger Next Stage
-        if: env.ACTIVE_STAGE != 'stage4' && env.STAGE_FINISHED_EARLY != 'true'
+        if: env.STAGE_FINISHED_EARLY != 'true'
         run: |
           STAGE="${{ env.ACTIVE_STAGE }}"
+          NEXT_STAGE=""
+          TAG=""
+
           if [ "$STAGE" = "stage1" ]; then
             NEXT_STAGE="stage2"
             TAG="build-stage1-draft"
@@ -354,6 +401,15 @@ jobs:
           elif [ "$STAGE" = "stage3" ]; then
             NEXT_STAGE="stage4"
             TAG="build-stage3-draft"
+          elif [ "$STAGE" = "stage4" ]; then
+            NEXT_STAGE="stage5"
+            TAG="build-stage4-draft"
+          elif [ "$STAGE" = "stage5" ]; then
+            NEXT_STAGE="stage6"
+            TAG="build-stage5-draft"
+          else
+            echo "Reached end of defined stages without APK."
+            exit 1
           fi
 
           echo "Compressing $STAGE out/Bare directory into $TAG..."
@@ -378,37 +434,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 12. STAGE 4: FINAL COMPILATION (4.5 HOURS)
-      - name: Stage 4 - Compile to Final APK Completion
-        if: env.ACTIVE_STAGE == 'stage4' || env.STAGE_FINISHED_EARLY == 'true'
-        run: |
-          cd /mnt/chromium/src
-          export DEPOT_TOOLS_METRICS=0
-          export PYTHONUNBUFFERED=1
-          export TERM=dumb
-
-          echo "Starting Stage 4 final compilation to produce ChromePublic.apk..."
-          /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | tee out/Bare/ninja_console.log
-
-          APK_FILE=$(find out/Bare -type f -name "*.apk" | head -n 1)
-          if [ -n "$APK_FILE" ]; then
-            echo "FOUND_APK=$APK_FILE" >> $GITHUB_ENV
-          else
-            echo "Error: APK not found after compilation."
-            exit 1
-          fi
-
-      # 13. PREPARE FINAL RELEASE APK
+      # 15. PREPARE FINAL RELEASE APK
       - name: Prepare Final Release APK
-        if: env.ACTIVE_STAGE == 'stage4' || env.STAGE_FINISHED_EARLY == 'true'
+        if: env.STAGE_FINISHED_EARLY == 'true'
         run: |
           mkdir -p /mnt/output_apk
           cp "/mnt/chromium/src/${{ env.FOUND_APK }}" /mnt/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
           ls -lh /mnt/output_apk/
 
-      # 14. PUBLISH DIRECTLY TO GITHUB RELEASES
+      # 16. PUBLISH DIRECTLY TO GITHUB RELEASES
       - name: Publish APK to GitHub Releases
-        if: env.ACTIVE_STAGE == 'stage4' || env.STAGE_FINISHED_EARLY == 'true'
+        if: env.STAGE_FINISHED_EARLY == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.0-alpha.3-kiwi
@@ -420,15 +456,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 15. CLEANUP INTERMEDIATE DRAFT RELEASES UPON SUCCESS
+      # 17. CLEANUP INTERMEDIATE DRAFT RELEASES UPON SUCCESS
       - name: Cleanup Intermediate Draft Releases
-        if: env.ACTIVE_STAGE == 'stage4' || env.STAGE_FINISHED_EARLY == 'true'
+        if: env.STAGE_FINISHED_EARLY == 'true'
         run: |
-          gh release delete build-stage1-draft --repo ${{ github.repository }} --yes 2>/dev/null || true
-          gh release delete build-stage2-draft --repo ${{ github.repository }} --yes 2>/dev/null || true
-          gh release delete build-stage3-draft --repo ${{ github.repository }} --yes 2>/dev/null || true
-          git push --delete origin build-stage1-draft 2>/dev/null || true
-          git push --delete origin build-stage2-draft 2>/dev/null || true
-          git push --delete origin build-stage3-draft 2>/dev/null || true
+          for i in 1 2 3 4 5; do
+            gh release delete "build-stage${i}-draft" --repo ${{ github.repository }} --yes 2>/dev/null || true
+            git push --delete origin "build-stage${i}-draft" 2>/dev/null || true
+          done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
