@@ -6,7 +6,7 @@ on:
       stage:
         description: 'Select Build Stage'
         required: true
-        default: 'stage5'
+        default: 'stage4'
         type: choice
         options:
           - stage1
@@ -47,7 +47,7 @@ jobs:
 
   build:
     needs: validate-patches
-    name: Build Bare Browser ARM64 (${{ github.event.inputs.stage || 'stage5' }})
+    name: Build Bare Browser ARM64 (${{ github.event.inputs.stage || 'stage4' }})
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
@@ -87,7 +87,7 @@ jobs:
           mkdir -p /mnt/tmp
           chmod 1777 /mnt/tmp
           echo "TMPDIR=/mnt/tmp" >> $GITHUB_ENV
-          echo "ACTIVE_STAGE=${{ github.event.inputs.stage || 'stage5' }}" >> $GITHUB_ENV
+          echo "ACTIVE_STAGE=${{ github.event.inputs.stage || 'stage4' }}" >> $GITHUB_ENV
           free -h
 
       # 2. INSTALL PREREQUISITES
@@ -220,13 +220,13 @@ jobs:
           curl -L -f -o /mnt/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. STRICT CHECKPOINT RESTORE & SYNCHRONIZE TIMESTAMPS
+      # 8. CLEAN CHECKPOINT RESTORE (PRESERVES EXACT TIMESTAMPS)
       - name: Restore Checkpoint Archive
         if: env.ACTIVE_STAGE != 'stage1'
         run: |
           cd /mnt/chromium/src
           mkdir -p out/Bare
-          echo "Checking out checkpoint for ${{ env.ACTIVE_STAGE }}..."
+          echo "Restoring checkpoint for ${{ env.ACTIVE_STAGE }}..."
           sudo mkdir -p /mnt/checkpoint_download
           sudo chown -R runner:docker /mnt/checkpoint_download
           cd /mnt/checkpoint_download
@@ -245,42 +245,18 @@ jobs:
             TARGET_TAG="build-stage1-draft"
           fi
 
-          echo "STRICT RESTORE: Downloading EXACT tag: $TARGET_TAG..."
-          DOWNLOAD_SUCCESS=false
-          for attempt in 1 2 3 4 5; do
-            echo "Download attempt $attempt for $TARGET_TAG..."
+          echo "Downloading $TARGET_TAG..."
+          for attempt in 1 2 3 4; do
             if gh release download "$TARGET_TAG" -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }}; then
-              DOWNLOAD_SUCCESS=true
               break
             fi
-            echo "Waiting 15 seconds before retry..."
-            sleep 15
+            sleep 10
           done
 
-          if [ "$DOWNLOAD_SUCCESS" != "true" ]; then
-            echo "FATAL ERROR: Could not find exact required checkpoint release $TARGET_TAG."
-            exit 1
-          fi
-
-          echo "Extracting checkpoint objects into out/Bare..."
+          # Extract cleanly preserving all original timestamps without touching any files
           cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /mnt/chromium/src/out/Bare/
           rm -rf /mnt/checkpoint_download
-
-          cd /mnt/chromium/src
-
-          echo "Fixing build timestamps to prevent re-compilation..."
-          # 1. Backdate all source files to 2020 so Ninja never thinks they were recently modified
-          find . -maxdepth 4 -type f \( -name "*.cc" -o -name "*.h" -o -name "*.c" -o -name "*.cpp" -o -name "*.inc" \) -exec touch -t 202001010000.00 {} + 2>/dev/null || true
-
-          # 2. Touch all compiled .o files so Ninja sees them as strictly newer than the source code
-          find out/Bare -type f -name "*.o" -exec touch {} + 2>/dev/null || true
-
-          # 3. Neutralize auto-regeneration so ninja never resets the graph
-          if [ -f out/Bare/build.ninja ]; then
-            echo "Neutralizing build.ninja auto-regeneration rule..."
-            sed -i 's/^build build.ninja: gn/# build build.ninja: gn/' out/Bare/build.ninja
-          fi
-          echo "Checkpoint $TARGET_TAG restored and synchronized successfully!"
+          echo "Checkpoint restored cleanly!"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -364,7 +340,6 @@ jobs:
             done
           ) > /mnt/chromium/src/out/Bare/resource_log.txt 2>&1 &
           echo $! > /mnt/monitor.pid
-          echo "Resource monitor started with PID $(cat /mnt/monitor.pid)"
 
       # 11. SAFE COMPILATION (4.0 HOURS SAFE WINDOW)
       - name: Safe Window Compilation (4.0 Hours)
@@ -437,7 +412,7 @@ jobs:
           gh release delete "$TAG" --repo ${{ github.repository }} --yes 2>/dev/null || true
           git push --delete origin "$TAG" 2>/dev/null || true
 
-          echo "Publishing $TAG (retaining all drafts)..."
+          echo "Publishing $TAG..."
           gh release create "$TAG" /mnt/draft_upload/checkpoint.tar.zst.part_* \
             --title "Chromium Build Checkpoint ($TAG)" \
             --notes "Checkpoint objects for $NEXT_STAGE." \
