@@ -423,7 +423,7 @@ jobs:
           gh release delete "$TAG" --repo ${{ github.repository }} --yes 2>/dev/null || true
           git push --delete origin "$TAG" 2>/dev/null || true
 
-          echo "Publishing $TAG..."
+          echo "Publishing $TAG (will NOT be deleted automatically)..."
           gh release create "$TAG" /mnt/draft_upload/checkpoint.tar.zst.part_* \
             --title "Chromium Build Checkpoint ($TAG)" \
             --notes "Checkpoint objects for $NEXT_STAGE." \
@@ -455,39 +455,5 @@ jobs:
           files: /mnt/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 16. SAVE PERMANENT BASE CHECKPOINT CACHE FOR FAST FUTURE MODS
-      - name: Save Permanent Base Checkpoint for Future Builds
-        if: env.STAGE_FINISHED_EARLY == 'true'
-        run: |
-          echo "Saving complete out/Bare as a permanent draft release for fast future updates..."
-          sudo mkdir -p /mnt/final_cache_upload
-          sudo chown -R runner:docker /mnt/final_cache_upload
-          cd /mnt/chromium/src/out/Bare
-          tar -cf - --exclude='*.apk' . | zstd -3 -T0 | split -b 1900M - /mnt/final_cache_upload/checkpoint.tar.zst.part_
-
-          gh release delete "chromium-base-cache" --repo ${{ github.repository }} --yes 2>/dev/null || true
-          git push --delete origin "chromium-base-cache" 2>/dev/null || true
-
-          gh release create "chromium-base-cache" /mnt/final_cache_upload/checkpoint.tar.zst.part_* \
-            --title "Chromium Base Compiled Cache (Ready for Fast Mods)" \
-            --notes "Full pre-compiled C++ tree. Used to compile UI patches (bottom toolbar, AMOLED dark mode) in 10 minutes." \
-            --repo ${{ github.repository }} \
-            --draft
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 17. AUTOMATICALLY DELETE STAGES 1 TO 4 CHECKPOINTS
-      - name: Cleanup Intermediate Draft Releases (Stages 1-4)
-        if: env.STAGE_FINISHED_EARLY == 'true'
-        run: |
-          echo "Cleaning up intermediate draft releases 1 through 4..."
-          for i in 1 2 3 4; do
-            gh release delete "build-stage${i}-draft" --repo ${{ github.repository }} --yes 2>/dev/null || true
-            git push --delete origin "build-stage${i}-draft" 2>/dev/null || true
-          done
-          echo "Stages 1-4 cleaned up. Only the final APK release and the permanent base cache remain!"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
