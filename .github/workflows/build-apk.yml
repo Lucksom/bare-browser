@@ -1,4 +1,4 @@
-name: 2. "Build Bare Browser APK"
+name: "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       stage:
         description: 'Select Build Stage'
         required: true
-        default: 'stage3'
+        default: 'stage5'
         type: choice
         options:
           - stage1
@@ -15,6 +15,8 @@ on:
           - stage4
           - stage5
           - stage6
+          - stage7
+          - stage8
 
 permissions:
   contents: write
@@ -47,7 +49,7 @@ jobs:
 
   build:
     needs: validate-patches
-    name: Build Bare Browser ARM64 (${{ github.event.inputs.stage || 'stage3' }})
+    name: Build Bare Browser ARM64 (${{ github.event.inputs.stage || 'stage5' }})
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     steps:
@@ -87,7 +89,7 @@ jobs:
           mkdir -p /mnt/tmp
           chmod 1777 /mnt/tmp
           echo "TMPDIR=/mnt/tmp" >> $GITHUB_ENV
-          echo "ACTIVE_STAGE=${{ github.event.inputs.stage || 'stage3' }}" >> $GITHUB_ENV
+          echo "ACTIVE_STAGE=${{ github.event.inputs.stage || 'stage5' }}" >> $GITHUB_ENV
           free -h
 
       # 2. INSTALL PREREQUISITES
@@ -220,7 +222,7 @@ jobs:
           curl -L -f -o /mnt/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. RESTORE CHECKPOINT DRAFT & PREVENT REGENERATING NINJA FILES
+      # 8. RESTORE CHECKPOINT DRAFT (UP TO STAGE 8)
       - name: Restore Checkpoint Archive
         if: env.ACTIVE_STAGE != 'stage1'
         run: |
@@ -233,7 +235,11 @@ jobs:
 
           STAGE="${{ env.ACTIVE_STAGE }}"
           TARGET_TAG=""
-          if [ "$STAGE" = "stage6" ]; then
+          if [ "$STAGE" = "stage8" ]; then
+            TARGET_TAG="build-stage7-draft"
+          elif [ "$STAGE" = "stage7" ]; then
+            TARGET_TAG="build-stage6-draft"
+          elif [ "$STAGE" = "stage6" ]; then
             TARGET_TAG="build-stage5-draft"
           elif [ "$STAGE" = "stage5" ]; then
             TARGET_TAG="build-stage4-draft"
@@ -246,8 +252,12 @@ jobs:
           fi
 
           echo "Downloading $TARGET_TAG..."
-          gh release download "$TARGET_TAG" -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} 2>/dev/null || \
-          gh release download build-stage2-draft -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} || true
+          for attempt in 1 2 3 4; do
+            if gh release download "$TARGET_TAG" -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }}; then
+              break
+            fi
+            sleep 10
+          done
 
           if ls checkpoint.tar.zst.part_* 1> /dev/null 2>&1; then
             echo "Extracting checkpoint objects into out/Bare..."
@@ -255,14 +265,14 @@ jobs:
             rm -rf /mnt/checkpoint_download
 
             cd /mnt/chromium/src
-            # DISABLE the auto-regeneration rule in build.ninja so Ninja CANNOT run '[0/1] Regenerating ninja files'
+            # Neutralize auto-regeneration rule in build.ninja to keep target graph stable
             if [ -f out/Bare/build.ninja ]; then
               echo "Neutralizing build.ninja auto-regeneration rule..."
               sed -i 's/^build build.ninja: gn/# build build.ninja: gn/' out/Bare/build.ninja
             fi
-            echo "Checkpoint restored and locked against regeneration!"
+            echo "Checkpoint restored cleanly!"
           else
-            echo "Error: No checkpoint release found."
+            echo "Error: No checkpoint release found for $TARGET_TAG."
             exit 1
           fi
         env:
@@ -350,28 +360,28 @@ jobs:
           echo $! > /mnt/monitor.pid
           echo "Resource monitor started with PID $(cat /mnt/monitor.pid)"
 
-      # 11. SAFE WINDOW COMPILATION (4.5 HOURS)
-      - name: Safe Window Compilation (4.5 Hours)
+      # 11. SAFE COMPILATION (4.2 HOURS SAFE WINDOW)
+      - name: Safe Window Compilation (4.2 Hours)
         run: |
           cd /mnt/chromium/src
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
           export TERM=dumb
 
-          echo "Starting compilation for ${{ env.ACTIVE_STAGE }} (4.5 hours safe window)..."
+          echo "Starting compilation for ${{ env.ACTIVE_STAGE }} (4.2 hours safe window)..."
           set +e
-          timeout 16200 /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | ts '%H:%M:%S' | tee out/Bare/ninja_console.log
+          # 15,120s = 4.2 Hours Window (leaves safe buffer for packaging/upload)
+          timeout 15120 /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | ts '%H:%M:%S' | tee out/Bare/ninja_console.log
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
-          # Stop resource monitor
           kill $(cat /mnt/monitor.pid) 2>/dev/null || true
 
           APK_FILE=$(find out/Bare -type f -name "*.apk" | head -n 1)
           if [ -n "$APK_FILE" ]; then
             echo "STAGE_FINISHED_EARLY=true" >> $GITHUB_ENV
             echo "FOUND_APK=$APK_FILE" >> $GITHUB_ENV
-            echo "Compilation completed early with APK: $APK_FILE"
+            echo "Compilation completed with APK: $APK_FILE"
           else
             echo "STAGE_FINISHED_EARLY=false" >> $GITHUB_ENV
           fi
@@ -385,7 +395,7 @@ jobs:
           path: /mnt/chromium/src/out/Bare/resource_log.txt
           retention-days: 3
 
-      # 13. CHECKPOINT SAVE & AUTO-DISPATCH NEXT STAGE
+      # 13. CHECKPOINT SAVE & AUTO-DISPATCH NEXT STAGE (PRESERVES ALL DRAFTS)
       - name: Create Draft Release and Trigger Next Stage
         if: env.STAGE_FINISHED_EARLY != 'true'
         run: |
@@ -408,8 +418,14 @@ jobs:
           elif [ "$STAGE" = "stage5" ]; then
             NEXT_STAGE="stage6"
             TAG="build-stage5-draft"
+          elif [ "$STAGE" = "stage6" ]; then
+            NEXT_STAGE="stage7"
+            TAG="build-stage6-draft"
+          elif [ "$STAGE" = "stage7" ]; then
+            NEXT_STAGE="stage8"
+            TAG="build-stage7-draft"
           else
-            echo "Reached end of defined stages without APK."
+            echo "Reached end of defined stages (Stage 8)."
             exit 1
           fi
 
@@ -422,7 +438,7 @@ jobs:
           gh release delete "$TAG" --repo ${{ github.repository }} --yes 2>/dev/null || true
           git push --delete origin "$TAG" 2>/dev/null || true
 
-          echo "Publishing $TAG..."
+          echo "Publishing $TAG (will NOT be deleted automatically)..."
           gh release create "$TAG" /mnt/draft_upload/checkpoint.tar.zst.part_* \
             --title "Chromium Build Checkpoint ($TAG)" \
             --notes "Checkpoint objects for $NEXT_STAGE." \
@@ -443,7 +459,7 @@ jobs:
           cp "/mnt/chromium/src/${{ env.FOUND_APK }}" /mnt/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
           ls -lh /mnt/output_apk/
 
-      # 15. PUBLISH DIRECTLY TO GITHUB RELEASES
+      # 15. PUBLISH DIRECTLY TO GITHUB RELEASES (RUNS IN WHICHEVER STAGE SUCCEEDS)
       - name: Publish APK to GitHub Releases
         if: env.STAGE_FINISHED_EARLY == 'true'
         uses: softprops/action-gh-release@v2
@@ -454,16 +470,5 @@ jobs:
           files: /mnt/output_apk/BareBrowser-v1.0.0-KiwiSwitcher-ARM64.apk
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 16. CLEANUP INTERMEDIATE DRAFT RELEASES UPON SUCCESS
-      - name: Cleanup Intermediate Draft Releases
-        if: env.STAGE_FINISHED_EARLY == 'true'
-        run: |
-          for i in 1 2 3 4 5; do
-            gh release delete "build-stage${i}-draft" --repo ${{ github.repository }} --yes 2>/dev/null || true
-            git push --delete origin "build-stage${i}-draft" 2>/dev/null || true
-          done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
