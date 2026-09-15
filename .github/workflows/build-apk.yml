@@ -220,7 +220,7 @@ jobs:
           curl -L -f -o /mnt/chromium/src/chrome/browser/resources/bare/ublock_origin.crx \
             https://github.com/gorhill/uBlock/releases/download/1.74.0/uBlock0_1.74.0.chromium.crx
 
-      # 8. STRICT CHECKPOINT RESTORE (EXACT STAGE MATCH ONLY)
+      # 8. STRICT CHECKPOINT RESTORE & SYNCHRONIZE TIMESTAMPS
       - name: Restore Checkpoint Archive
         if: env.ACTIVE_STAGE != 'stage1'
         run: |
@@ -245,7 +245,7 @@ jobs:
             TARGET_TAG="build-stage1-draft"
           fi
 
-          echo "STRICT RESTORE: Downloading EXACT tag: $TARGET_TAG (no fallbacks permitted)..."
+          echo "STRICT RESTORE: Downloading EXACT tag: $TARGET_TAG..."
           DOWNLOAD_SUCCESS=false
           for attempt in 1 2 3 4 5; do
             echo "Download attempt $attempt for $TARGET_TAG..."
@@ -259,24 +259,28 @@ jobs:
 
           if [ "$DOWNLOAD_SUCCESS" != "true" ]; then
             echo "FATAL ERROR: Could not find exact required checkpoint release $TARGET_TAG."
-            echo "Check GitHub Releases to ensure previous stage finished uploading!"
             exit 1
           fi
-
-          echo "Downloaded checkpoint parts:"
-          ls -lh checkpoint.tar.zst.part_*
 
           echo "Extracting checkpoint objects into out/Bare..."
           cat checkpoint.tar.zst.part_* | zstd -d -T0 | tar -xf - -C /mnt/chromium/src/out/Bare/
           rm -rf /mnt/checkpoint_download
 
           cd /mnt/chromium/src
-          # Neutralize build.ninja auto-regeneration so ninja never resets the graph
+
+          echo "Fixing build timestamps to prevent re-compilation..."
+          # 1. Backdate all source files to 2020 so Ninja never thinks they were recently modified
+          find . -maxdepth 4 -type f \( -name "*.cc" -o -name "*.h" -o -name "*.c" -o -name "*.cpp" -o -name "*.inc" \) -exec touch -t 202001010000.00 {} + 2>/dev/null || true
+
+          # 2. Touch all compiled .o files so Ninja sees them as strictly newer than the source code
+          find out/Bare -type f -name "*.o" -exec touch {} + 2>/dev/null || true
+
+          # 3. Neutralize auto-regeneration so ninja never resets the graph
           if [ -f out/Bare/build.ninja ]; then
             echo "Neutralizing build.ninja auto-regeneration rule..."
             sed -i 's/^build build.ninja: gn/# build build.ninja: gn/' out/Bare/build.ninja
           fi
-          echo "Checkpoint $TARGET_TAG restored successfully!"
+          echo "Checkpoint $TARGET_TAG restored and synchronized successfully!"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -362,7 +366,7 @@ jobs:
           echo $! > /mnt/monitor.pid
           echo "Resource monitor started with PID $(cat /mnt/monitor.pid)"
 
-      # 11. SAFE COMPILATION (4.0 HOURS SAFE WINDOW - 2HR BUFFER FOR UPLOAD)
+      # 11. SAFE COMPILATION (4.0 HOURS SAFE WINDOW)
       - name: Safe Window Compilation (4.0 Hours)
         run: |
           cd /mnt/chromium/src
@@ -372,12 +376,10 @@ jobs:
 
           echo "Starting compilation for ${{ env.ACTIVE_STAGE }} (4.0 hours safe window)..."
           set +e
-          # 14,400s = 4.0 Hours Safe Window (Leaves ample buffer for compression & upload)
           timeout 14400 /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | ts '%H:%M:%S' | tee out/Bare/ninja_console.log
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
-          # Stop resource monitor
           kill $(cat /mnt/monitor.pid) 2>/dev/null || true
 
           APK_FILE=$(find out/Bare -type f -name "*.apk" | head -n 1)
@@ -435,7 +437,7 @@ jobs:
           gh release delete "$TAG" --repo ${{ github.repository }} --yes 2>/dev/null || true
           git push --delete origin "$TAG" 2>/dev/null || true
 
-          echo "Publishing $TAG (will NOT be deleted automatically)..."
+          echo "Publishing $TAG (retaining all drafts)..."
           gh release create "$TAG" /mnt/draft_upload/checkpoint.tar.zst.part_* \
             --title "Chromium Build Checkpoint ($TAG)" \
             --notes "Checkpoint objects for $NEXT_STAGE." \
