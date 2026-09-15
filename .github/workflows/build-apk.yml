@@ -1,4 +1,4 @@
-name: "Build Bare Browser APK"
+name: 2. "Build Bare Browser APK"
 
 on:
   workflow_dispatch:
@@ -253,7 +253,7 @@ jobs:
 
           echo "Downloading $TARGET_TAG..."
           for attempt in 1 2 3 4; do
-            if gh release download "$TARGET_TAG" -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }}; then
+            if gh release download "$TARGET_TAG" -p "checkpoint.tar.zst.part_*" --repo ${{ github.repository }} 2>/dev/null; then
               break
             fi
             sleep 10
@@ -265,7 +265,7 @@ jobs:
             rm -rf /mnt/checkpoint_download
 
             cd /mnt/chromium/src
-            # Neutralize auto-regeneration rule in build.ninja to keep target graph stable
+            # Neutralize auto-regeneration rule in build.ninja so Ninja does not rebuild graph
             if [ -f out/Bare/build.ninja ]; then
               echo "Neutralizing build.ninja auto-regeneration rule..."
               sed -i 's/^build build.ninja: gn/# build build.ninja: gn/' out/Bare/build.ninja
@@ -360,18 +360,18 @@ jobs:
           echo $! > /mnt/monitor.pid
           echo "Resource monitor started with PID $(cat /mnt/monitor.pid)"
 
-      # 11. SAFE COMPILATION (4.2 HOURS SAFE WINDOW)
-      - name: Safe Window Compilation (4.2 Hours)
+      # 11. SAFE COMPILATION (5.0 HOURS SAFE WINDOW)
+      - name: Safe Window Compilation (5.0 Hours)
         run: |
           cd /mnt/chromium/src
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
           export TERM=dumb
 
-          echo "Starting compilation for ${{ env.ACTIVE_STAGE }} (4.2 hours safe window)..."
+          echo "Starting compilation for ${{ env.ACTIVE_STAGE }} (5.0 hours safe window)..."
           set +e
-          # 15,120s = 4.2 Hours Window (leaves safe buffer for packaging/upload)
-          timeout 15120 /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | ts '%H:%M:%S' | tee out/Bare/ninja_console.log
+          # 18,000s = 5.0 Hours compilation window (leaves 1 hour for checkpoint packaging & upload)
+          timeout 18000 /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | ts '%H:%M:%S' | tee out/Bare/ninja_console.log
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
@@ -438,7 +438,7 @@ jobs:
           gh release delete "$TAG" --repo ${{ github.repository }} --yes 2>/dev/null || true
           git push --delete origin "$TAG" 2>/dev/null || true
 
-          echo "Publishing $TAG (will NOT be deleted automatically)..."
+          echo "Publishing $TAG (retaining draft permanently)..."
           gh release create "$TAG" /mnt/draft_upload/checkpoint.tar.zst.part_* \
             --title "Chromium Build Checkpoint ($TAG)" \
             --notes "Checkpoint objects for $NEXT_STAGE." \
