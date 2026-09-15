@@ -360,18 +360,18 @@ jobs:
           echo $! > /mnt/monitor.pid
           echo "Resource monitor started with PID $(cat /mnt/monitor.pid)"
 
-      # 11. SAFE COMPILATION (5.0 HOURS SAFE WINDOW)
-      - name: Safe Window Compilation (5.0 Hours)
+      # 11. SAFE COMPILATION (5 HOURS 30 MINUTES SAFE WINDOW)
+      - name: Safe Window Compilation (5.5 Hours)
         run: |
           cd /mnt/chromium/src
           export DEPOT_TOOLS_METRICS=0
           export PYTHONUNBUFFERED=1
           export TERM=dumb
 
-          echo "Starting compilation for ${{ env.ACTIVE_STAGE }} (5.0 hours safe window)..."
+          echo "Starting compilation for ${{ env.ACTIVE_STAGE }} (5.5 hours safe window)..."
           set +e
-          # 18,000s = 5.0 Hours compilation window (leaves 1 hour for checkpoint packaging & upload)
-          timeout 18000 /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | ts '%H:%M:%S' | tee out/Bare/ninja_console.log
+          # 19,800s = 5 Hours 30 Minutes compilation window
+          timeout 19800 /mnt/depot_tools/ninja -C out/Bare -j 4 chrome_public_apk 2>&1 | ts '%H:%M:%S' | tee out/Bare/ninja_console.log
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
@@ -429,11 +429,12 @@ jobs:
             exit 1
           fi
 
-          echo "Compressing $STAGE out/Bare directory into $TAG..."
+          echo "Compressing $STAGE out/Bare directory into $TAG using ultra-fast zstd..."
           sudo mkdir -p /mnt/draft_upload
           sudo chown -R runner:docker /mnt/draft_upload
           cd /mnt/chromium/src/out/Bare
-          tar -cf - --exclude='*.apk' . | zstd -3 -T0 | split -b 1900M - /mnt/draft_upload/checkpoint.tar.zst.part_
+          # --fast=1 finishes in ~3-4 minutes to safely fit in the remaining 30 minute window
+          tar -cf - --exclude='*.apk' . | zstd --fast=1 -T0 | split -b 1900M - /mnt/draft_upload/checkpoint.tar.zst.part_
 
           gh release delete "$TAG" --repo ${{ github.repository }} --yes 2>/dev/null || true
           git push --delete origin "$TAG" 2>/dev/null || true
